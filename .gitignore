@@ -7,3 +7,6 @@ dist/
 
 # generated dashboards
 docs/usage*.html
+
+# local settings — guardados en tachikoma-config, no publicar
+.claude/settings.local.json
