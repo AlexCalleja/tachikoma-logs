@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cclogs — Claude Code usage dashboard generator.
+"""tachikoma-logs — Claude Code usage dashboard generator.
 
 Usage:
     python generate.py [--output docs/usage.html]
@@ -407,7 +407,7 @@ def generate_html(sessions: list, tips: list, output_path: Path):
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>cclogs</title>
+  <title>tachikoma-logs</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {{
@@ -461,7 +461,7 @@ def generate_html(sessions: list, tips: list, output_path: Path):
   </style>
 </head>
 <body>
-  <h1>cclogs</h1>
+  <h1>tachikoma-logs</h1>
   <p class="meta">generado {generated_at} &middot; Chart.js 4.4 &middot; datos de ~/.claude/projects/</p>
 
   <div class="stats">
@@ -702,7 +702,7 @@ function copyClaudePrompt() {{
 # ── Main ───────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import argparse
-    ap = argparse.ArgumentParser(description="cclogs — generate Claude Code usage dashboard")
+    ap = argparse.ArgumentParser(description="tachikoma-logs — generate Claude Code usage dashboard")
     ap.add_argument("--output", default="docs/usage.html", help="Output HTML path")
     args = ap.parse_args()
 

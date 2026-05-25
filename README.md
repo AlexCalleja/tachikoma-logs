@@ -1,4 +1,4 @@
-# cclogs
+# tachikoma-logs
 
 Local usage analytics dashboard for Claude Code. Reads `~/.claude/projects/**/*.jsonl` and generates a self-contained HTML dashboard — no server required.
 
