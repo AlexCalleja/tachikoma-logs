@@ -33,6 +33,10 @@ python generate.py --output path/to/output.html
 - Python 3.9+
 - No external dependencies (stdlib only + Chart.js via CDN)
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ## Notes
 
 - Pricing is approximate and based on Anthropic's documented rates.

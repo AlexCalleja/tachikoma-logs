@@ -31,6 +31,8 @@ tachikoma-logs/
 
 Flujo de datos: `parse_sessions()` → `compute_tips()` → `build_claude_prompt()` → `generate_html()`
 
+La estructura es plana por diseño (YAGNI) — mover los módulos a un paquete `tachikoma/` tiene sentido cuando haya suficientes módulos que lo justifiquen.
+
 ## Fuente de datos
 
 - Archivos: `~/.claude/projects/**/*.jsonl` (glob recursivo)
