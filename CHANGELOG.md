@@ -3,6 +3,12 @@
 All notable changes to this project will be documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Changed
+- Extracted HTML/CSS/JS template from `html_builder.py` into `templates/dashboard.html`;
+  `html_builder.py` drops from 853 to 110 lines — data injected via `__PLACEHOLDER__` substitution
+
 ## [0.3.0] — 2026-05-26
 
 ### Added

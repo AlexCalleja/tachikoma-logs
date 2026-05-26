@@ -24,6 +24,8 @@ tachikoma-logs/
 ├── log_parser.py    ← PRICING, get_tier(), calc_cost(), parse_sessions()
 ├── tips.py          ← compute_tips() → tips bilingües {level, title_es, body_es, title_en, body_en}
 ├── html_builder.py  ← build_claude_prompt(sessions, tips, lang), generate_html()
+├── templates/
+│   └── dashboard.html  ← HTML/CSS/JS del dashboard; generate_html() inyecta datos via __PLACEHOLDER__
 └── tests/
     ├── test_log_parser.py
     └── test_tips.py
