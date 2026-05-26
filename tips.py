@@ -2,7 +2,7 @@ from collections import defaultdict
 from statistics import median
 
 
-def compute_tips(sessions: list) -> list:
+def compute_tips(sessions: list[dict]) -> list[dict]:
     """Returns list of {level, title_es, body_es, title_en, body_en} dicts."""
     if not sessions:
         return []

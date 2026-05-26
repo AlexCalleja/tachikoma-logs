@@ -19,7 +19,7 @@ def get_tier(model: str) -> str:
     return "sonnet"
 
 
-def calc_cost(usage: dict, tier: str) -> float:
+def calc_cost(usage: dict[str, int], tier: str) -> float:
     p = PRICES.get(tier, PRICES["sonnet"])
     return (
         usage.get("input_tokens", 0)                * p["input"]        / 1e6 +
@@ -29,7 +29,7 @@ def calc_cost(usage: dict, tier: str) -> float:
     )
 
 
-def parse_sessions() -> list:
+def parse_sessions() -> list[dict]:
     projects_dir = Path.home() / ".claude" / "projects"
     if not projects_dir.exists():
         print(f"ERROR: {projects_dir} not found", file=sys.stderr)
