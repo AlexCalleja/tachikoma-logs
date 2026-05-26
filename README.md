@@ -1,5 +1,7 @@
 # tachikoma-logs
 
+[![CI](https://github.com/AlexCalleja/tachikoma-logs/actions/workflows/ci.yml/badge.svg)](https://github.com/AlexCalleja/tachikoma-logs/actions/workflows/ci.yml)
+
 Local usage analytics dashboard for Claude Code. Reads `~/.claude/projects/**/*.jsonl` and generates a self-contained HTML dashboard — no server required.
 
 ## Setup
