@@ -1,0 +1,852 @@
+import json
+from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
+from statistics import median
+
+
+def build_claude_prompt(sessions: list, tips: list, lang: str = "es") -> str:
+    if not sessions:
+        return ""
+
+    total_tokens       = sum(s["total_tokens"] for s in sessions)
+    total_cost         = sum(s["estimated_cost"] for s in sessions)
+    total_input        = sum(s["input_tokens"] for s in sessions)
+    total_output       = sum(s["output_tokens"] for s in sessions)
+    total_cache_read   = sum(s["cache_read"] for s in sessions)
+    total_cache_create = sum(s["cache_create"] for s in sessions)
+
+    by_proj = defaultdict(lambda: {"tokens": 0, "cost": 0.0, "sessions": 0})
+    for s in sessions:
+        by_proj[s["project"]]["tokens"]   += s["total_tokens"]
+        by_proj[s["project"]]["cost"]     += s["estimated_cost"]
+        by_proj[s["project"]]["sessions"] += 1
+    top5 = sorted(by_proj.items(), key=lambda x: -x[1]["cost"])[:5]
+
+    model_counts = defaultdict(int)
+    for s in sessions:
+        model_counts[s["primary_model"]] += 1
+
+    durations  = [s["duration_min"] for s in sessions]
+    med_dur    = median(durations)
+    cacheable  = total_input + total_cache_read + total_cache_create
+    cache_rate = total_cache_read / cacheable if cacheable > 0 else 0
+
+    sw = "sessions" if lang == "en" else "sesiones"
+    tip_lines = "\n".join(
+        f"- [{t['level'].upper()}] {t[f'title_{lang}']}: {t[f'body_{lang}']}" for t in tips
+    )
+    proj_lines = "\n".join(
+        f"  - {name}: {d['sessions']} {sw}, {d['tokens']:,} tokens, ${d['cost']:.2f}"
+        for name, d in top5
+    )
+    model_lines = "\n".join(
+        f"  - {m}: {c} {sw}" for m, c in sorted(model_counts.items())
+    )
+
+    first_date = sessions[0]["date"]
+    last_date  = sessions[-1]["date"]
+
+    if lang == "en":
+        return f"""Here are my Claude Code usage metrics. \
+Analyze them and give me concrete recommendations to improve my workflow, \
+reduce costs, and improve session quality.
+
+## General summary
+- Period: {first_date} -> {last_date}
+- Total sessions: {len(sessions)}
+- Active projects: {len(by_proj)}
+- Total tokens: {total_tokens:,} (input: {total_input:,}, output: {total_output:,})
+- Estimated cost: ${total_cost:.2f} USD
+- Median session duration: {med_dur:.0f} min
+- Cache rate: {cache_rate:.0%} (read: {total_cache_read:,}, create: {total_cache_create:,})
+
+## Distribution by project (top 5)
+{proj_lines}
+
+## Distribution by model
+{model_lines}
+
+## Automatically detected tips
+{tip_lines if tip_lines else "  (none)"}
+
+## Questions I'd like to answer
+1. What patterns suggest inefficient usage?
+2. How could I improve the cache rate?
+3. Does the Sonnet/Opus balance make sense for the type of work I do?
+4. What should I change in my longer sessions?
+5. Are there any warning signs I'm not capturing with the automatic rules?
+""".strip()
+
+    return f"""Aqui estan mis metricas de uso de Claude Code. \
+Analizalas y dame recomendaciones concretas para mejorar mi flujo de trabajo, \
+reducir costos y mejorar la calidad de mis sesiones.
+
+## Resumen general
+- Periodo: {first_date} -> {last_date}
+- Sesiones totales: {len(sessions)}
+- Proyectos activos: {len(by_proj)}
+- Tokens totales: {total_tokens:,} (input: {total_input:,}, output: {total_output:,})
+- Costo estimado: ${total_cost:.2f} USD
+- Duracion mediana de sesion: {med_dur:.0f} min
+- Tasa de cache: {cache_rate:.0%} (read: {total_cache_read:,}, create: {total_cache_create:,})
+
+## Distribucion por proyecto (top 5)
+{proj_lines}
+
+## Distribucion por modelo
+{model_lines}
+
+## Tips automaticos detectados
+{tip_lines if tip_lines else "  (ninguno)"}
+
+## Preguntas que me gustaria responder
+1. Que patrones ves que sugieran uso ineficiente?
+2. Como podria mejorar la tasa de cache?
+3. El balance Sonnet/Opus tiene sentido para el tipo de trabajo que hago?
+4. Que deberia cambiar en mis sesiones mas largas?
+5. Hay alguna senal de alerta que no este captando con las reglas automaticas?
+""".strip()
+
+
+def generate_html(sessions: list, tips: list, output_path: Path):
+    claude_prompt_es = build_claude_prompt(sessions, tips, lang="es")
+    claude_prompt_en = build_claude_prompt(sessions, tips, lang="en")
+
+    sessions_json  = json.dumps(sessions,         ensure_ascii=False)
+    tips_json      = json.dumps(tips,             ensure_ascii=False)
+    prompt_es_json = json.dumps(claude_prompt_es, ensure_ascii=False)
+    prompt_en_json = json.dumps(claude_prompt_en, ensure_ascii=False)
+
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    html = f"""<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>tachikoma-logs</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {{
+      --bg:#0d1117; --surface:#161b22; --border:#30363d;
+      --text:#e6edf3; --muted:#7d8590; --accent:#58a6ff;
+      --green:#3fb950; --purple:#bc8cff; --orange:#f0883e; --red:#f85149;
+      --warn-bg:rgba(240,136,62,.12); --warn-border:rgba(240,136,62,.4);
+      --info-bg:rgba(88,166,255,.10); --info-border:rgba(88,166,255,.35);
+      --ok-bg:rgba(63,185,80,.10);    --ok-border:rgba(63,185,80,.35);
+    }}
+    [data-theme="light"] {{
+      --bg:#ffffff; --surface:#f6f8fa; --border:#d0d7de;
+      --text:#1f2328; --muted:#636e7b; --accent:#0969da;
+      --green:#1a7f37; --purple:#8250df; --orange:#bc4c00; --red:#cf222e;
+      --warn-bg:rgba(188,76,0,.08);   --warn-border:rgba(188,76,0,.3);
+      --info-bg:rgba(9,105,218,.08);  --info-border:rgba(9,105,218,.3);
+      --ok-bg:rgba(26,127,55,.08);    --ok-border:rgba(26,127,55,.3);
+    }}
+    * {{ box-sizing:border-box; margin:0; padding:0 }}
+    body {{ background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:2rem; max-width:1200px; margin:0 auto }}
+    h1   {{ font-size:1.15rem; font-weight:700; margin-bottom:.25rem }}
+    .meta {{ font-size:.7rem; color:var(--muted); font-family:'JetBrains Mono','Fira Code',monospace; margin-bottom:1rem }}
+
+    /* ── Filters ── */
+    .filters {{ display:flex; align-items:center; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.25rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:.65rem 1rem }}
+    .filter-group {{ display:flex; gap:.35rem }}
+    .filter-btn {{ background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:.3rem .7rem; font-size:.72rem; font-weight:600; cursor:pointer; transition:all .15s }}
+    .filter-btn:hover {{ color:var(--text); border-color:var(--accent) }}
+    .filter-btn.active {{ background:var(--accent); color:#fff; border-color:var(--accent) }}
+    [data-theme="dark"] .filter-btn.active {{ color:#0d1117 }}
+    .filter-sep {{ width:1px; background:var(--border); align-self:stretch }}
+    .model-filters {{ display:flex; gap:.85rem; flex-wrap:wrap }}
+    .model-check {{ display:flex; align-items:center; gap:.35rem; font-size:.72rem; color:var(--muted); cursor:pointer; user-select:none }}
+    .model-check input {{ accent-color:var(--accent); cursor:pointer }}
+    .model-check:hover {{ color:var(--text) }}
+    .toggle-group {{ margin-left:auto; display:flex; gap:.35rem }}
+
+    /* ── Stats ── */
+    .stats {{ display:grid; grid-template-columns:repeat(5,1fr); gap:.75rem; margin-bottom:1.25rem }}
+    .stat {{ background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:.9rem 1.1rem }}
+    .stat .lbl {{ font-size:.6rem; color:var(--muted); text-transform:uppercase; letter-spacing:.07em }}
+    .stat .val {{ font-size:1.35rem; font-weight:700; margin-top:.2rem }}
+    .stat .sub {{ font-size:.6rem; color:var(--muted); margin-top:.1rem }}
+
+    /* ── Charts ── */
+    .grid {{ display:grid; grid-template-columns:1fr 1fr; gap:.85rem; margin-bottom:1.25rem }}
+    .card {{ background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.1rem }}
+    .card.full {{ grid-column:1/-1 }}
+    .card h2 {{ font-size:.62rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.85rem }}
+    canvas {{ max-height:240px }}
+
+    /* ── Tips ── */
+    .section-title {{ font-size:.62rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.6rem }}
+    .tips-section {{ margin-bottom:1.25rem }}
+    .tip {{ border-radius:7px; padding:.75rem 1rem; margin-bottom:.5rem; display:flex; gap:.75rem; align-items:flex-start }}
+    .tip.warn {{ background:var(--warn-bg); border:1px solid var(--warn-border) }}
+    .tip.info {{ background:var(--info-bg); border:1px solid var(--info-border) }}
+    .tip.ok   {{ background:var(--ok-bg);   border:1px solid var(--ok-border) }}
+    .tip-icon {{ font-size:.85rem; flex-shrink:0; margin-top:.05rem; width:1rem; text-align:center }}
+    .tip-title {{ font-size:.75rem; font-weight:600; margin-bottom:.2rem }}
+    .tip.warn .tip-title {{ color:var(--orange) }}
+    .tip.info .tip-title {{ color:var(--accent) }}
+    .tip.ok   .tip-title {{ color:var(--green) }}
+    .tip-body {{ font-size:.72rem; color:var(--muted); line-height:1.5 }}
+
+    /* ── Tables ── */
+    .tables-section {{ margin-bottom:1.25rem }}
+    .data-table {{ width:100%; border-collapse:collapse; font-size:.72rem }}
+    .data-table th {{ text-align:left; padding:.5rem .75rem; color:var(--muted); font-size:.6rem; text-transform:uppercase; letter-spacing:.07em; border-bottom:1px solid var(--border); cursor:pointer; white-space:nowrap; user-select:none }}
+    .data-table th:hover {{ color:var(--text) }}
+    .data-table th.sort-asc::after  {{ content:' ↑'; color:var(--accent) }}
+    .data-table th.sort-desc::after {{ content:' ↓'; color:var(--accent) }}
+    .data-table td {{ padding:.45rem .75rem; border-bottom:1px solid rgba(128,128,128,.15); color:var(--text) }}
+    .data-table tr:last-child td {{ border-bottom:none }}
+    .data-table tr:hover td {{ background:rgba(128,128,128,.05) }}
+    .model-tag {{ display:inline-block; padding:.1rem .45rem; border-radius:4px; font-size:.65rem; font-weight:600 }}
+    .model-tag.opus   {{ background:rgba(188,140,255,.15); color:var(--purple) }}
+    .model-tag.sonnet {{ background:rgba(88,166,255,.15);  color:var(--accent) }}
+    .model-tag.haiku  {{ background:rgba(63,185,80,.15);   color:var(--green) }}
+    .model-tag.mixed  {{ background:rgba(240,136,62,.15);  color:var(--orange) }}
+    .empty-row {{ color:var(--muted); font-style:italic }}
+
+    /* ── Claude prompt ── */
+    .claude-section {{ margin-bottom:1.25rem }}
+    .claude-card {{ background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1rem 1.25rem; display:flex; align-items:center; gap:1rem }}
+    .claude-desc {{ flex:1; font-size:.75rem; color:var(--muted); line-height:1.5 }}
+    .claude-desc strong {{ color:var(--text) }}
+    .btn-copy {{ background:var(--accent); color:#fff; border:none; border-radius:6px; padding:.55rem 1.1rem; font-size:.75rem; font-weight:700; cursor:pointer; white-space:nowrap; transition:opacity .15s }}
+    [data-theme="dark"] .btn-copy {{ color:#0d1117 }}
+    .btn-copy:hover {{ opacity:.85 }}
+    .btn-copy.copied {{ background:var(--green) }}
+
+    @media(max-width:900px) {{ .stats{{grid-template-columns:repeat(3,1fr)}} .grid{{grid-template-columns:1fr}} }}
+    @media(max-width:600px) {{ .stats{{grid-template-columns:1fr 1fr}} body{{padding:1rem}} .filters{{flex-direction:column;align-items:flex-start}} .toggle-group{{margin-left:0}} }}
+  </style>
+</head>
+<body>
+  <h1>tachikoma-logs</h1>
+  <p class="meta"><span data-i18n="meta_generated"></span> {generated_at} &middot; Chart.js 4.4 &middot; ~/.claude/projects/</p>
+
+  <div class="filters">
+    <div class="filter-group">
+      <button class="filter-btn" data-days="7"  onclick="setDateFilter(7)">7d</button>
+      <button class="filter-btn active" data-days="30" onclick="setDateFilter(30)">30d</button>
+      <button class="filter-btn" data-days="90" onclick="setDateFilter(90)">90d</button>
+      <button class="filter-btn" data-days="0"  onclick="setDateFilter(0)" data-i18n="btn_all"></button>
+    </div>
+    <div class="filter-sep"></div>
+    <div class="model-filters">
+      <label class="model-check"><input type="checkbox" value="opus"   checked onchange="toggleModel('opus')">   Opus</label>
+      <label class="model-check"><input type="checkbox" value="sonnet" checked onchange="toggleModel('sonnet')"> Sonnet</label>
+      <label class="model-check"><input type="checkbox" value="haiku"  checked onchange="toggleModel('haiku')">  Haiku</label>
+      <label class="model-check"><input type="checkbox" value="mixed"  checked onchange="toggleModel('mixed')">  Mixed</label>
+    </div>
+    <div class="toggle-group">
+      <button class="filter-btn" id="btn-lang"  onclick="toggleLang()">EN</button>
+      <button class="filter-btn" id="btn-theme" onclick="toggleTheme()">☀</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="lbl" data-i18n="kpi_sessions"></div><div class="val" id="s-sessions"></div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_tokens"></div><div class="val" id="s-tokens"></div><div class="sub" data-i18n="sub_tokens"></div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_cost"></div><div class="val" id="s-cost"></div><div class="sub" data-i18n="sub_cost"></div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_projects"></div><div class="val" id="s-projects"></div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_duration"></div><div class="val" id="s-duration"></div><div class="sub" data-i18n="sub_duration"></div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card full"><h2 data-i18n="chart_time"></h2><canvas id="cTime"></canvas></div>
+    <div class="card"><h2 data-i18n="chart_proj"></h2><canvas id="cProj"></canvas></div>
+    <div class="card"><h2 data-i18n="chart_model"></h2><canvas id="cModel"></canvas></div>
+    <div class="card full"><h2 data-i18n="chart_dur"></h2><canvas id="cDur"></canvas></div>
+  </div>
+
+  <div class="tips-section">
+    <div class="section-title" data-i18n="tips_title"></div>
+    <div id="tips-container"></div>
+  </div>
+
+  <div class="tables-section">
+    <div class="card" style="margin-bottom:.85rem">
+      <h2 data-i18n="tbl_model_title"></h2>
+      <table class="data-table" id="tModel">
+        <thead><tr>
+          <th onclick="sortTbl('tModel',0)" data-i18n="th_model"></th>
+          <th onclick="sortTbl('tModel',1)" data-i18n="th_sessions"></th>
+          <th onclick="sortTbl('tModel',2)" data-i18n="th_input"></th>
+          <th onclick="sortTbl('tModel',3)" data-i18n="th_output"></th>
+          <th onclick="sortTbl('tModel',4)" data-i18n="th_cache_read"></th>
+          <th onclick="sortTbl('tModel',5)" data-i18n="th_cache_create"></th>
+          <th onclick="sortTbl('tModel',6)" data-i18n="th_cost_usd"></th>
+        </tr></thead>
+        <tbody id="tModel-body"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2><span data-i18n="tbl_sessions_title"></span> <span id="sessions-count-label" style="font-weight:400;text-transform:none;font-size:.6rem;color:var(--muted)"></span></h2>
+      <table class="data-table" id="tSessions">
+        <thead><tr>
+          <th onclick="sortTbl('tSessions',0)" data-i18n="th_date"></th>
+          <th onclick="sortTbl('tSessions',1)" data-i18n="th_project"></th>
+          <th onclick="sortTbl('tSessions',2)" data-i18n="th_dur"></th>
+          <th onclick="sortTbl('tSessions',3)" data-i18n="th_model_col"></th>
+          <th onclick="sortTbl('tSessions',4)" data-i18n="th_tokens"></th>
+          <th onclick="sortTbl('tSessions',5)" data-i18n="th_cost"></th>
+        </tr></thead>
+        <tbody id="tSessions-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="claude-section">
+    <div class="section-title" data-i18n="claude_title"></div>
+    <div class="claude-card">
+      <div class="claude-desc">
+        <strong data-i18n="claude_desc_strong"></strong> <span data-i18n="claude_desc"></span>
+      </div>
+      <button class="btn-copy" id="btn-copy" onclick="copyClaudePrompt()"></button>
+    </div>
+  </div>
+
+<script>
+const ALL_SESSIONS  = {sessions_json};
+const TIPS          = {tips_json};
+const CLAUDE_PROMPT = {{ es: {prompt_es_json}, en: {prompt_en_json} }};
+
+const MODEL_COLORS = {{ sonnet:'#58a6ff', opus:'#bc8cff', haiku:'#3fb950', mixed:'#f0883e' }};
+const PALETTE = ['#58a6ff','#3fb950','#f0883e','#bc8cff','#f85149','#56d364','#e3b341','#d2a8ff','#ffa657','#ff7b72'];
+const DUR_EDGES  = [0,5,15,30,60,120,9999];
+const DUR_LABELS = ['<5 min','5-15 min','15-30 min','30-60 min','1-2 h','>2 h'];
+
+// ── i18n ─────────────────────────────────────────────────────────────────────
+const I18N = {{
+  es: {{
+    meta_generated:     'generado',
+    btn_all:            'Todo',
+    kpi_sessions:       'Sesiones',
+    kpi_tokens:         'Tokens totales',
+    kpi_cost:           'Costo estimado',
+    kpi_projects:       'Proyectos',
+    kpi_duration:       'Duracion media',
+    sub_tokens:         'input + output',
+    sub_cost:           'USD aproximado',
+    sub_duration:       'por sesion',
+    chart_time:         'Tokens por dia (input / output / cache)',
+    chart_proj:         'Top proyectos (tokens)',
+    chart_model:        'Modelo primario por sesion',
+    chart_dur:          'Distribucion de duracion de sesiones',
+    axis_tokens:        'Tokens',
+    axis_usd:           'USD',
+    ds_input:           'Input',
+    ds_output:          'Output',
+    ds_cache_read:      'Cache read',
+    ds_cache_create:    'Cache create',
+    ds_cost:            'Costo USD',
+    tooltip_sessions:   'sesiones: ',
+    tbl_model_title:    'Costo por modelo',
+    th_model:           'Modelo',
+    th_sessions:        'Sesiones',
+    th_input:           'Input (k)',
+    th_output:          'Output (k)',
+    th_cache_read:      'Cache read (k)',
+    th_cache_create:    'Cache create (k)',
+    th_cost_usd:        'Costo USD',
+    tbl_sessions_title: 'Sesiones recientes',
+    th_date:            'Fecha',
+    th_project:         'Proyecto',
+    th_dur:             'Dur.',
+    th_model_col:       'Modelo',
+    th_tokens:          'Tokens',
+    th_cost:            'Costo',
+    showing_n_of:       'mostrando %n% de %total%',
+    n_sessions:         '%n% sesiones',
+    tips_title:         'Consejos de uso',
+    no_tips:            'Sin alertas — todo se ve bien.',
+    no_data:            'Sin datos para el filtro seleccionado.',
+    claude_title:       'Analisis con Claude',
+    claude_desc_strong: 'Copia un prompt pre-armado',
+    claude_desc:        'con todas tus metricas y pegalo en Claude para obtener analisis mas profundo, recomendaciones personalizadas y patrones que las reglas automaticas no capturan.',
+    btn_copy:           'Copiar prompt para Claude',
+    btn_copied:         '¡Copiado!',
+  }},
+  en: {{
+    meta_generated:     'generated',
+    btn_all:            'All',
+    kpi_sessions:       'Sessions',
+    kpi_tokens:         'Total tokens',
+    kpi_cost:           'Estimated cost',
+    kpi_projects:       'Projects',
+    kpi_duration:       'Avg duration',
+    sub_tokens:         'input + output',
+    sub_cost:           'approx. USD',
+    sub_duration:       'per session',
+    chart_time:         'Tokens per day (input / output / cache)',
+    chart_proj:         'Top projects (tokens)',
+    chart_model:        'Primary model per session',
+    chart_dur:          'Session duration distribution',
+    axis_tokens:        'Tokens',
+    axis_usd:           'USD',
+    ds_input:           'Input',
+    ds_output:          'Output',
+    ds_cache_read:      'Cache read',
+    ds_cache_create:    'Cache create',
+    ds_cost:            'Cost USD',
+    tooltip_sessions:   'sessions: ',
+    tbl_model_title:    'Cost by model',
+    th_model:           'Model',
+    th_sessions:        'Sessions',
+    th_input:           'Input (k)',
+    th_output:          'Output (k)',
+    th_cache_read:      'Cache read (k)',
+    th_cache_create:    'Cache create (k)',
+    th_cost_usd:        'Cost USD',
+    tbl_sessions_title: 'Recent sessions',
+    th_date:            'Date',
+    th_project:         'Project',
+    th_dur:             'Dur.',
+    th_model_col:       'Model',
+    th_tokens:          'Tokens',
+    th_cost:            'Cost',
+    showing_n_of:       'showing %n% of %total%',
+    n_sessions:         '%n% sessions',
+    tips_title:         'Usage tips',
+    no_tips:            'No alerts — everything looks good.',
+    no_data:            'No data for the selected filter.',
+    claude_title:       'Analysis with Claude',
+    claude_desc_strong: 'Copy a pre-built prompt',
+    claude_desc:        "with all your metrics and paste it into Claude for deeper analysis, personalized recommendations, and patterns that automatic rules don't capture.",
+    btn_copy:           'Copy prompt for Claude',
+    btn_copied:         'Copied!',
+  }},
+}};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let activeDays   = 30;
+let activeModels = new Set(['opus','sonnet','haiku','mixed']);
+let theme = localStorage.getItem('theme') || 'dark';
+let lang  = localStorage.getItem('lang')  || 'es';
+
+// ── Filter helpers ────────────────────────────────────────────────────────────
+function filterSessions() {{
+  const cutoff = activeDays > 0
+    ? new Date(Date.now() - activeDays * 86400 * 1000)
+    : null;
+  return ALL_SESSIONS.filter(s => {{
+    if (cutoff && new Date(s.date + 'T00:00:00') < cutoff) return false;
+    return activeModels.has(s.primary_model);
+  }});
+}}
+
+function setDateFilter(days) {{
+  activeDays = days;
+  document.querySelectorAll('.filter-group .filter-btn').forEach(btn => {{
+    btn.classList.toggle('active', parseInt(btn.dataset.days) === days);
+  }});
+  applyFilters();
+}}
+
+function toggleModel(model) {{
+  if (activeModels.has(model)) {{ activeModels.delete(model); }}
+  else {{ activeModels.add(model); }}
+  applyFilters();
+}}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function setTheme(t) {{
+  theme = t;
+  localStorage.setItem('theme', t);
+  document.documentElement.setAttribute('data-theme', t);
+  const isDark = t === 'dark';
+  Chart.defaults.color       = isDark ? '#7d8590' : '#636e7b';
+  Chart.defaults.borderColor = isDark ? '#30363d' : '#d0d7de';
+  document.getElementById('btn-theme').textContent = isDark ? '☀' : '☾';
+  Object.values(charts).forEach(c => c.destroy());
+  initCharts(filterSessions());
+}}
+
+function toggleTheme() {{ setTheme(theme === 'dark' ? 'light' : 'dark'); }}
+
+// ── Language ──────────────────────────────────────────────────────────────────
+function setLang(l) {{
+  lang = l;
+  localStorage.setItem('lang', l);
+  document.documentElement.lang = l;
+  document.getElementById('btn-lang').textContent = l === 'es' ? 'EN' : 'ES';
+  applyLang();
+  updateChartLabels();
+  const container = document.getElementById('tips-container');
+  container.replaceChildren();
+  renderTips();
+  updateSessionsTable(filterSessions());
+}}
+
+function toggleLang() {{ setLang(lang === 'es' ? 'en' : 'es'); }}
+
+function applyLang() {{
+  const i = I18N[lang];
+  document.querySelectorAll('[data-i18n]').forEach(el => {{
+    const key = el.dataset.i18n;
+    if (key in i) el.textContent = i[key];
+  }});
+  document.getElementById('btn-copy').textContent = i.btn_copy;
+}}
+
+// ── Aggregation helpers ───────────────────────────────────────────────────────
+function aggrByDate(sessions) {{
+  const map = {{}};
+  for (const s of sessions) {{
+    if (!map[s.date]) map[s.date] = {{input:0,output:0,cache_read:0,cache_create:0,cost:0,sessions:0}};
+    const d = map[s.date];
+    d.input        += s.input_tokens;
+    d.output       += s.output_tokens;
+    d.cache_read   += s.cache_read;
+    d.cache_create += s.cache_create;
+    d.cost         += s.estimated_cost;
+    d.sessions     += 1;
+  }}
+  const dates = Object.keys(map).sort();
+  return {{dates, map}};
+}}
+
+function aggrByProject(sessions) {{
+  const map = {{}};
+  for (const s of sessions) {{
+    if (!map[s.project]) map[s.project] = {{tokens:0,sessions:0,cost:0}};
+    map[s.project].tokens   += s.total_tokens;
+    map[s.project].sessions += 1;
+    map[s.project].cost     += s.estimated_cost;
+  }}
+  return Object.entries(map).sort((a,b) => b[1].tokens - a[1].tokens).slice(0,10);
+}}
+
+function aggrByModel(sessions) {{
+  const map = {{}};
+  for (const s of sessions) {{
+    if (!map[s.primary_model]) map[s.primary_model] = {{sessions:0,input:0,output:0,cache_read:0,cache_create:0,cost:0}};
+    const m = map[s.primary_model];
+    m.sessions     += 1;
+    m.input        += s.input_tokens;
+    m.output       += s.output_tokens;
+    m.cache_read   += s.cache_read;
+    m.cache_create += s.cache_create;
+    m.cost         += s.estimated_cost;
+  }}
+  return map;
+}}
+
+function aggrDuration(sessions) {{
+  const counts = new Array(DUR_LABELS.length).fill(0);
+  for (const s of sessions) {{
+    for (let i = 0; i < DUR_EDGES.length - 1; i++) {{
+      if (s.duration_min >= DUR_EDGES[i] && s.duration_min < DUR_EDGES[i+1]) {{
+        counts[i]++; break;
+      }}
+    }}
+  }}
+  return counts;
+}}
+
+// ── KPIs ──────────────────────────────────────────────────────────────────────
+function updateKPIs(sessions) {{
+  if (!sessions.length) {{
+    ['s-sessions','s-tokens','s-cost','s-projects','s-duration'].forEach(id =>
+      document.getElementById(id).textContent = '—');
+    return;
+  }}
+  const totalTokens = sessions.reduce((a,s) => a + s.total_tokens, 0);
+  const totalCost   = sessions.reduce((a,s) => a + s.estimated_cost, 0);
+  const projects    = new Set(sessions.map(s => s.project)).size;
+  const avgDur      = sessions.reduce((a,s) => a + s.duration_min, 0) / sessions.length;
+  document.getElementById('s-sessions').textContent = sessions.length.toLocaleString();
+  document.getElementById('s-tokens').textContent   = (totalTokens / 1000).toFixed(0) + 'k';
+  document.getElementById('s-cost').textContent     = '$' + totalCost.toFixed(2);
+  document.getElementById('s-projects').textContent = projects;
+  document.getElementById('s-duration').textContent = avgDur.toFixed(1) + ' min';
+}}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+const charts = {{}};
+
+function initCharts(sessions) {{
+  const i      = I18N[lang];
+  const isDark = theme === 'dark';
+  const GRID   = {{ color: isDark ? 'rgba(48,54,61,.5)' : 'rgba(208,215,222,.5)' }};
+  const TICKS  = {{ color: isDark ? '#7d8590' : '#636e7b', font: {{ size:11 }} }};
+
+  const {{dates, map}} = aggrByDate(sessions);
+  const proj   = aggrByProject(sessions);
+  const mCount = aggrByModel(sessions);
+  const mKeys  = Object.keys(mCount);
+  const dur    = aggrDuration(sessions);
+
+  charts.time = new Chart(document.getElementById('cTime'), {{
+    data: {{
+      labels: dates,
+      datasets: [
+        {{ type:'bar',  label:i.ds_input,        data:dates.map(d=>map[d].input),        backgroundColor:'rgba(88,166,255,.5)',  borderColor:'#58a6ff',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' }},
+        {{ type:'bar',  label:i.ds_output,       data:dates.map(d=>map[d].output),       backgroundColor:'rgba(188,140,255,.5)',borderColor:'#bc8cff',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' }},
+        {{ type:'bar',  label:i.ds_cache_read,   data:dates.map(d=>map[d].cache_read),   backgroundColor:'rgba(63,185,80,.4)',  borderColor:'#3fb950',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' }},
+        {{ type:'bar',  label:i.ds_cache_create, data:dates.map(d=>map[d].cache_create), backgroundColor:'rgba(240,136,62,.4)', borderColor:'#f0883e',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' }},
+        {{ type:'line', label:i.ds_cost,         data:dates.map(d=>+map[d].cost.toFixed(4)), borderColor:'#f85149',backgroundColor:'transparent',borderWidth:1.5,pointRadius:2,tension:0.3,yAxisID:'y2' }},
+      ],
+    }},
+    options: {{
+      responsive:true,
+      interaction:{{mode:'index',intersect:false}},
+      plugins:{{
+        legend:{{labels:{{font:{{size:11}},boxWidth:12}}}},
+        tooltip:{{callbacks:{{afterBody:ctx => ctx[0] ? [i.tooltip_sessions+(map[ctx[0].label]?.sessions??'')] : []}}}}
+      }},
+      scales:{{
+        x: {{stacked:true,grid:GRID,ticks:TICKS}},
+        y: {{stacked:true,grid:GRID,ticks:TICKS,title:{{display:true,text:i.axis_tokens,font:{{size:10}}}}}},
+        y2:{{grid:{{display:false}},ticks:TICKS,position:'right',title:{{display:true,text:i.axis_usd,color:'#f85149',font:{{size:10}}}}}},
+      }},
+    }},
+  }});
+
+  charts.proj = new Chart(document.getElementById('cProj'), {{
+    type:'doughnut',
+    data:{{
+      labels:proj.map(e=>e[0]),
+      datasets:[{{data:proj.map(e=>e[1].tokens),backgroundColor:PALETTE,borderWidth:0}}],
+    }},
+    options:{{responsive:true,plugins:{{
+      legend:{{position:'right',labels:{{font:{{size:11}},boxWidth:12}}}},
+      tooltip:{{callbacks:{{afterLabel:ctx=>['sessions: '+proj[ctx.dataIndex][1].sessions,'cost: $'+proj[ctx.dataIndex][1].cost.toFixed(2)]}}}}
+    }}}},
+  }});
+
+  charts.model = new Chart(document.getElementById('cModel'), {{
+    type:'doughnut',
+    data:{{
+      labels:mKeys,
+      datasets:[{{data:mKeys.map(m=>mCount[m].sessions),backgroundColor:mKeys.map(m=>MODEL_COLORS[m]||'#7d8590'),borderWidth:0}}],
+    }},
+    options:{{responsive:true,plugins:{{legend:{{position:'right',labels:{{font:{{size:11}},boxWidth:12}}}}}}}},
+  }});
+
+  charts.dur = new Chart(document.getElementById('cDur'), {{
+    type:'bar',
+    data:{{labels:DUR_LABELS,datasets:[{{label:i.kpi_sessions,data:dur,backgroundColor:'rgba(63,185,80,.45)',borderColor:'#3fb950',borderWidth:1,borderRadius:3}}]}},
+    options:{{responsive:true,plugins:{{legend:{{display:false}}}},scales:{{x:{{grid:GRID,ticks:TICKS}},y:{{grid:GRID,ticks:TICKS}}}}}},
+  }});
+}}
+
+function updateCharts(sessions) {{
+  const i = I18N[lang];
+  const {{dates, map}} = aggrByDate(sessions);
+  const ds = charts.time.data.datasets;
+  charts.time.data.labels = dates;
+  ds[0].data = dates.map(d=>map[d].input);
+  ds[1].data = dates.map(d=>map[d].output);
+  ds[2].data = dates.map(d=>map[d].cache_read);
+  ds[3].data = dates.map(d=>map[d].cache_create);
+  ds[4].data = dates.map(d=>+map[d].cost.toFixed(4));
+  charts.time.options.plugins.tooltip.callbacks.afterBody =
+    ctx => ctx[0] ? [i.tooltip_sessions+(map[ctx[0].label]?.sessions??'')] : [];
+  charts.time.update();
+
+  const proj = aggrByProject(sessions);
+  charts.proj.data.labels = proj.map(e=>e[0]);
+  charts.proj.data.datasets[0].data = proj.map(e=>e[1].tokens);
+  charts.proj.options.plugins.tooltip.callbacks.afterLabel =
+    ctx => ['sessions: '+proj[ctx.dataIndex][1].sessions,'cost: $'+proj[ctx.dataIndex][1].cost.toFixed(2)];
+  charts.proj.update();
+
+  const mCount = aggrByModel(sessions);
+  const mKeys  = Object.keys(mCount);
+  charts.model.data.labels = mKeys;
+  charts.model.data.datasets[0].data            = mKeys.map(m=>mCount[m].sessions);
+  charts.model.data.datasets[0].backgroundColor = mKeys.map(m=>MODEL_COLORS[m]||'#7d8590');
+  charts.model.update();
+
+  charts.dur.data.datasets[0].data = aggrDuration(sessions);
+  charts.dur.update();
+}}
+
+function updateChartLabels() {{
+  const i  = I18N[lang];
+  const ds = charts.time.data.datasets;
+  ds[0].label = i.ds_input;
+  ds[1].label = i.ds_output;
+  ds[2].label = i.ds_cache_read;
+  ds[3].label = i.ds_cache_create;
+  ds[4].label = i.ds_cost;
+  charts.time.options.scales.y.title.text  = i.axis_tokens;
+  charts.time.options.scales.y2.title.text = i.axis_usd;
+  const {{dates, map}} = aggrByDate(filterSessions());
+  charts.time.options.plugins.tooltip.callbacks.afterBody =
+    ctx => ctx[0] ? [i.tooltip_sessions+(map[ctx[0].label]?.sessions??'')] : [];
+  charts.time.update();
+  charts.dur.data.datasets[0].label = i.kpi_sessions;
+  charts.dur.update();
+}}
+
+// ── Tables ────────────────────────────────────────────────────────────────────
+const tblData = {{}};
+const sortSt  = {{}};
+
+function renderTblBody(id, rows) {{
+  const tbody = document.getElementById(id + '-body');
+  tbody.replaceChildren();
+  if (!rows.length) {{
+    const tr = tbody.insertRow();
+    const td = tr.insertCell();
+    td.colSpan = 10;
+    td.className = 'empty-row';
+    td.textContent = I18N[lang].no_data;
+    return;
+  }}
+  const modelCol = id === 'tSessions' ? 3 : 0;
+  for (const row of rows) {{
+    const tr = tbody.insertRow();
+    for (let ci = 0; ci < row.length; ci++) {{
+      const td = tr.insertCell();
+      if (ci === modelCol && row[ci] in MODEL_COLORS) {{
+        const span = document.createElement('span');
+        span.className = 'model-tag ' + row[ci];
+        span.textContent = row[ci];
+        td.appendChild(span);
+      }} else {{
+        td.textContent = row[ci];
+      }}
+    }}
+  }}
+}}
+
+function sortTbl(id, col) {{
+  if (!sortSt[id]) sortSt[id] = {{col:-1,asc:true}};
+  const st = sortSt[id];
+  st.asc = st.col === col ? !st.asc : true;
+  st.col = col;
+  const rows = [...tblData[id]].sort((a,b) => {{
+    const av = String(a[col]), bv = String(b[col]);
+    const an = parseFloat(av.replace(/[^0-9.-]/g,'')), bn = parseFloat(bv.replace(/[^0-9.-]/g,''));
+    const cmp = (!isNaN(an) && !isNaN(bn)) ? an-bn : av.localeCompare(bv);
+    return st.asc ? cmp : -cmp;
+  }});
+  renderTblBody(id, rows);
+  document.querySelectorAll('#'+id+' th').forEach((th,ci) => {{
+    th.classList.remove('sort-asc','sort-desc');
+    if (ci===col) th.classList.add(st.asc?'sort-asc':'sort-desc');
+  }});
+}}
+
+function updateModelTable(sessions) {{
+  const aggr = aggrByModel(sessions);
+  const rows = Object.entries(aggr)
+    .sort((a,b) => b[1].cost - a[1].cost)
+    .map(([model,d]) => [
+      model,
+      d.sessions,
+      (d.input/1000).toFixed(0),
+      (d.output/1000).toFixed(0),
+      (d.cache_read/1000).toFixed(0),
+      (d.cache_create/1000).toFixed(0),
+      '$'+d.cost.toFixed(2),
+    ]);
+  tblData['tModel'] = rows;
+  renderTblBody('tModel', rows);
+}}
+
+function updateSessionsTable(sessions) {{
+  const sorted = [...sessions].sort((a,b) => b.datetime.localeCompare(a.datetime));
+  const i      = I18N[lang];
+  const label  = document.getElementById('sessions-count-label');
+  label.textContent = sessions.length > 20
+    ? i.showing_n_of.replace('%n%', 20).replace('%total%', sessions.length)
+    : i.n_sessions.replace('%n%', sessions.length);
+  const rows = sorted.slice(0,20).map(s => [
+    s.datetime.slice(0,16).replace('T',' '),
+    s.project,
+    s.duration_min.toFixed(0)+' min',
+    s.primary_model,
+    (s.total_tokens/1000).toFixed(0)+'k',
+    '$'+s.estimated_cost.toFixed(4),
+  ]);
+  tblData['tSessions'] = rows;
+  renderTblBody('tSessions', rows);
+}}
+
+// ── Tips ──────────────────────────────────────────────────────────────────────
+function renderTips() {{
+  const container = document.getElementById('tips-container');
+  if (!TIPS.length) {{
+    const p = document.createElement('p');
+    p.style.cssText = 'font-size:.75rem;color:var(--muted)';
+    p.textContent = I18N[lang].no_tips;
+    container.appendChild(p);
+    return;
+  }}
+  for (const t of TIPS) {{
+    const wrap  = document.createElement('div');
+    wrap.className = 'tip ' + t.level;
+    const icon  = document.createElement('div');
+    icon.className   = 'tip-icon';
+    icon.textContent = t.level === 'warn' ? '!' : t.level === 'ok' ? 'v' : 'i';
+    const body  = document.createElement('div');
+    const title = document.createElement('div');
+    title.className  = 'tip-title';
+    title.textContent = t['title_' + lang];
+    const desc  = document.createElement('div');
+    desc.className   = 'tip-body';
+    desc.textContent = t['body_' + lang];
+    body.appendChild(title);
+    body.appendChild(desc);
+    wrap.appendChild(icon);
+    wrap.appendChild(body);
+    container.appendChild(wrap);
+  }}
+}}
+
+// ── Apply filters ─────────────────────────────────────────────────────────────
+function applyFilters() {{
+  const f = filterSessions();
+  updateKPIs(f);
+  updateCharts(f);
+  updateModelTable(f);
+  updateSessionsTable(f);
+}}
+
+// ── Claude prompt copy ────────────────────────────────────────────────────────
+function copyClaudePrompt() {{
+  const btn   = document.getElementById('btn-copy');
+  const i     = I18N[lang];
+  const reset = () => {{ btn.textContent = i.btn_copy; btn.classList.remove('copied'); }};
+  const done  = () => {{ btn.textContent = i.btn_copied; btn.classList.add('copied'); setTimeout(reset, 2500); }};
+  if (navigator.clipboard?.writeText) {{
+    navigator.clipboard.writeText(CLAUDE_PROMPT[lang]).then(done).catch(fallback);
+  }} else {{ fallback(); }}
+  function fallback() {{
+    const ta = document.createElement('textarea');
+    ta.value = CLAUDE_PROMPT[lang];
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try {{ document.execCommand('copy'); done(); }} catch(_) {{}}
+    document.body.removeChild(ta);
+  }}
+}}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.documentElement.setAttribute('data-theme', theme);
+document.documentElement.lang = lang;
+Chart.defaults.color       = theme === 'dark' ? '#7d8590' : '#636e7b';
+Chart.defaults.borderColor = theme === 'dark' ? '#30363d' : '#d0d7de';
+if (theme === 'light') document.getElementById('btn-theme').textContent = '☾';
+if (lang  !== 'es')   document.getElementById('btn-lang').textContent  = 'ES';
+
+const initial = filterSessions();
+initCharts(initial);
+updateKPIs(initial);
+updateModelTable(initial);
+updateSessionsTable(initial);
+renderTips();
+applyLang();
+</script>
+</body>
+</html>"""
+
+    output_path.write_text(html, encoding="utf-8")
+    print(f"  -> {output_path}")
