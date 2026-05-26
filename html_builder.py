@@ -5,7 +5,7 @@ from pathlib import Path
 from statistics import median
 
 
-def build_claude_prompt(sessions: list, tips: list) -> str:
+def build_claude_prompt(sessions: list, tips: list, lang: str = "es") -> str:
     if not sessions:
         return ""
 
@@ -32,19 +32,51 @@ def build_claude_prompt(sessions: list, tips: list) -> str:
     cacheable  = total_input + total_cache_read + total_cache_create
     cache_rate = total_cache_read / cacheable if cacheable > 0 else 0
 
-    tip_lines  = "\n".join(
-        f"- [{t['level'].upper()}] {t['title']}: {t['body']}" for t in tips
+    sw = "sessions" if lang == "en" else "sesiones"
+    tip_lines = "\n".join(
+        f"- [{t['level'].upper()}] {t[f'title_{lang}']}: {t[f'body_{lang}']}" for t in tips
     )
     proj_lines = "\n".join(
-        f"  - {name}: {d['sessions']} sesiones, {d['tokens']:,} tokens, ${d['cost']:.2f}"
+        f"  - {name}: {d['sessions']} {sw}, {d['tokens']:,} tokens, ${d['cost']:.2f}"
         for name, d in top5
     )
     model_lines = "\n".join(
-        f"  - {m}: {c} sesiones" for m, c in sorted(model_counts.items())
+        f"  - {m}: {c} {sw}" for m, c in sorted(model_counts.items())
     )
 
     first_date = sessions[0]["date"]
     last_date  = sessions[-1]["date"]
+
+    if lang == "en":
+        return f"""Here are my Claude Code usage metrics. \
+Analyze them and give me concrete recommendations to improve my workflow, \
+reduce costs, and improve session quality.
+
+## General summary
+- Period: {first_date} -> {last_date}
+- Total sessions: {len(sessions)}
+- Active projects: {len(by_proj)}
+- Total tokens: {total_tokens:,} (input: {total_input:,}, output: {total_output:,})
+- Estimated cost: ${total_cost:.2f} USD
+- Median session duration: {med_dur:.0f} min
+- Cache rate: {cache_rate:.0%} (read: {total_cache_read:,}, create: {total_cache_create:,})
+
+## Distribution by project (top 5)
+{proj_lines}
+
+## Distribution by model
+{model_lines}
+
+## Automatically detected tips
+{tip_lines if tip_lines else "  (none)"}
+
+## Questions I'd like to answer
+1. What patterns suggest inefficient usage?
+2. How could I improve the cache rate?
+3. Does the Sonnet/Opus balance make sense for the type of work I do?
+4. What should I change in my longer sessions?
+5. Are there any warning signs I'm not capturing with the automatic rules?
+""".strip()
 
     return f"""Aqui estan mis metricas de uso de Claude Code. \
 Analizalas y dame recomendaciones concretas para mejorar mi flujo de trabajo, \
@@ -78,16 +110,18 @@ reducir costos y mejorar la calidad de mis sesiones.
 
 
 def generate_html(sessions: list, tips: list, output_path: Path):
-    claude_prompt = build_claude_prompt(sessions, tips)
+    claude_prompt_es = build_claude_prompt(sessions, tips, lang="es")
+    claude_prompt_en = build_claude_prompt(sessions, tips, lang="en")
 
-    sessions_json = json.dumps(sessions,       ensure_ascii=False)
-    tips_json     = json.dumps(tips,           ensure_ascii=False)
-    prompt_json   = json.dumps(claude_prompt,  ensure_ascii=False)
+    sessions_json  = json.dumps(sessions,         ensure_ascii=False)
+    tips_json      = json.dumps(tips,             ensure_ascii=False)
+    prompt_es_json = json.dumps(claude_prompt_es, ensure_ascii=False)
+    prompt_en_json = json.dumps(claude_prompt_en, ensure_ascii=False)
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     html = f"""<!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -102,6 +136,14 @@ def generate_html(sessions: list, tips: list, output_path: Path):
       --info-bg:rgba(88,166,255,.10); --info-border:rgba(88,166,255,.35);
       --ok-bg:rgba(63,185,80,.10);    --ok-border:rgba(63,185,80,.35);
     }}
+    [data-theme="light"] {{
+      --bg:#ffffff; --surface:#f6f8fa; --border:#d0d7de;
+      --text:#1f2328; --muted:#636e7b; --accent:#0969da;
+      --green:#1a7f37; --purple:#8250df; --orange:#bc4c00; --red:#cf222e;
+      --warn-bg:rgba(188,76,0,.08);   --warn-border:rgba(188,76,0,.3);
+      --info-bg:rgba(9,105,218,.08);  --info-border:rgba(9,105,218,.3);
+      --ok-bg:rgba(26,127,55,.08);    --ok-border:rgba(26,127,55,.3);
+    }}
     * {{ box-sizing:border-box; margin:0; padding:0 }}
     body {{ background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:2rem; max-width:1200px; margin:0 auto }}
     h1   {{ font-size:1.15rem; font-weight:700; margin-bottom:.25rem }}
@@ -112,12 +154,14 @@ def generate_html(sessions: list, tips: list, output_path: Path):
     .filter-group {{ display:flex; gap:.35rem }}
     .filter-btn {{ background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:.3rem .7rem; font-size:.72rem; font-weight:600; cursor:pointer; transition:all .15s }}
     .filter-btn:hover {{ color:var(--text); border-color:var(--accent) }}
-    .filter-btn.active {{ background:var(--accent); color:#0d1117; border-color:var(--accent) }}
+    .filter-btn.active {{ background:var(--accent); color:#fff; border-color:var(--accent) }}
+    [data-theme="dark"] .filter-btn.active {{ color:#0d1117 }}
     .filter-sep {{ width:1px; background:var(--border); align-self:stretch }}
     .model-filters {{ display:flex; gap:.85rem; flex-wrap:wrap }}
     .model-check {{ display:flex; align-items:center; gap:.35rem; font-size:.72rem; color:var(--muted); cursor:pointer; user-select:none }}
     .model-check input {{ accent-color:var(--accent); cursor:pointer }}
     .model-check:hover {{ color:var(--text) }}
+    .toggle-group {{ margin-left:auto; display:flex; gap:.35rem }}
 
     /* ── Stats ── */
     .stats {{ display:grid; grid-template-columns:repeat(5,1fr); gap:.75rem; margin-bottom:1.25rem }}
@@ -154,9 +198,9 @@ def generate_html(sessions: list, tips: list, output_path: Path):
     .data-table th:hover {{ color:var(--text) }}
     .data-table th.sort-asc::after  {{ content:' ↑'; color:var(--accent) }}
     .data-table th.sort-desc::after {{ content:' ↓'; color:var(--accent) }}
-    .data-table td {{ padding:.45rem .75rem; border-bottom:1px solid rgba(48,54,61,.5); color:var(--text) }}
+    .data-table td {{ padding:.45rem .75rem; border-bottom:1px solid rgba(128,128,128,.15); color:var(--text) }}
     .data-table tr:last-child td {{ border-bottom:none }}
-    .data-table tr:hover td {{ background:rgba(255,255,255,.03) }}
+    .data-table tr:hover td {{ background:rgba(128,128,128,.05) }}
     .model-tag {{ display:inline-block; padding:.1rem .45rem; border-radius:4px; font-size:.65rem; font-weight:600 }}
     .model-tag.opus   {{ background:rgba(188,140,255,.15); color:var(--purple) }}
     .model-tag.sonnet {{ background:rgba(88,166,255,.15);  color:var(--accent) }}
@@ -169,24 +213,25 @@ def generate_html(sessions: list, tips: list, output_path: Path):
     .claude-card {{ background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1rem 1.25rem; display:flex; align-items:center; gap:1rem }}
     .claude-desc {{ flex:1; font-size:.75rem; color:var(--muted); line-height:1.5 }}
     .claude-desc strong {{ color:var(--text) }}
-    .btn-copy {{ background:var(--accent); color:#0d1117; border:none; border-radius:6px; padding:.55rem 1.1rem; font-size:.75rem; font-weight:700; cursor:pointer; white-space:nowrap; transition:opacity .15s }}
+    .btn-copy {{ background:var(--accent); color:#fff; border:none; border-radius:6px; padding:.55rem 1.1rem; font-size:.75rem; font-weight:700; cursor:pointer; white-space:nowrap; transition:opacity .15s }}
+    [data-theme="dark"] .btn-copy {{ color:#0d1117 }}
     .btn-copy:hover {{ opacity:.85 }}
     .btn-copy.copied {{ background:var(--green) }}
 
     @media(max-width:900px) {{ .stats{{grid-template-columns:repeat(3,1fr)}} .grid{{grid-template-columns:1fr}} }}
-    @media(max-width:600px) {{ .stats{{grid-template-columns:1fr 1fr}} body{{padding:1rem}} .filters{{flex-direction:column;align-items:flex-start}} }}
+    @media(max-width:600px) {{ .stats{{grid-template-columns:1fr 1fr}} body{{padding:1rem}} .filters{{flex-direction:column;align-items:flex-start}} .toggle-group{{margin-left:0}} }}
   </style>
 </head>
 <body>
   <h1>tachikoma-logs</h1>
-  <p class="meta">generado {generated_at} &middot; Chart.js 4.4 &middot; datos de ~/.claude/projects/</p>
+  <p class="meta"><span data-i18n="meta_generated"></span> {generated_at} &middot; Chart.js 4.4 &middot; ~/.claude/projects/</p>
 
   <div class="filters">
     <div class="filter-group">
-      <button class="filter-btn" onclick="setDateFilter(7)">7d</button>
-      <button class="filter-btn active" onclick="setDateFilter(30)">30d</button>
-      <button class="filter-btn" onclick="setDateFilter(90)">90d</button>
-      <button class="filter-btn" onclick="setDateFilter(0)">All</button>
+      <button class="filter-btn" data-days="7"  onclick="setDateFilter(7)">7d</button>
+      <button class="filter-btn active" data-days="30" onclick="setDateFilter(30)">30d</button>
+      <button class="filter-btn" data-days="90" onclick="setDateFilter(90)">90d</button>
+      <button class="filter-btn" data-days="0"  onclick="setDateFilter(0)" data-i18n="btn_all"></button>
     </div>
     <div class="filter-sep"></div>
     <div class="model-filters">
@@ -195,54 +240,58 @@ def generate_html(sessions: list, tips: list, output_path: Path):
       <label class="model-check"><input type="checkbox" value="haiku"  checked onchange="toggleModel('haiku')">  Haiku</label>
       <label class="model-check"><input type="checkbox" value="mixed"  checked onchange="toggleModel('mixed')">  Mixed</label>
     </div>
+    <div class="toggle-group">
+      <button class="filter-btn" id="btn-lang"  onclick="toggleLang()">EN</button>
+      <button class="filter-btn" id="btn-theme" onclick="toggleTheme()">☀</button>
+    </div>
   </div>
 
   <div class="stats">
-    <div class="stat"><div class="lbl">Sesiones</div><div class="val" id="s-sessions"></div></div>
-    <div class="stat"><div class="lbl">Tokens totales</div><div class="val" id="s-tokens"></div><div class="sub">input + output</div></div>
-    <div class="stat"><div class="lbl">Costo estimado</div><div class="val" id="s-cost"></div><div class="sub">USD aproximado</div></div>
-    <div class="stat"><div class="lbl">Proyectos</div><div class="val" id="s-projects"></div></div>
-    <div class="stat"><div class="lbl">Duracion media</div><div class="val" id="s-duration"></div><div class="sub">por sesion</div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_sessions"></div><div class="val" id="s-sessions"></div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_tokens"></div><div class="val" id="s-tokens"></div><div class="sub" data-i18n="sub_tokens"></div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_cost"></div><div class="val" id="s-cost"></div><div class="sub" data-i18n="sub_cost"></div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_projects"></div><div class="val" id="s-projects"></div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_duration"></div><div class="val" id="s-duration"></div><div class="sub" data-i18n="sub_duration"></div></div>
   </div>
 
   <div class="grid">
-    <div class="card full"><h2>Tokens por dia (input / output / cache)</h2><canvas id="cTime"></canvas></div>
-    <div class="card"><h2>Top proyectos (tokens)</h2><canvas id="cProj"></canvas></div>
-    <div class="card"><h2>Modelo primario por sesion</h2><canvas id="cModel"></canvas></div>
-    <div class="card full"><h2>Distribucion de duracion de sesiones</h2><canvas id="cDur"></canvas></div>
+    <div class="card full"><h2 data-i18n="chart_time"></h2><canvas id="cTime"></canvas></div>
+    <div class="card"><h2 data-i18n="chart_proj"></h2><canvas id="cProj"></canvas></div>
+    <div class="card"><h2 data-i18n="chart_model"></h2><canvas id="cModel"></canvas></div>
+    <div class="card full"><h2 data-i18n="chart_dur"></h2><canvas id="cDur"></canvas></div>
   </div>
 
   <div class="tips-section">
-    <div class="section-title">Consejos de uso</div>
+    <div class="section-title" data-i18n="tips_title"></div>
     <div id="tips-container"></div>
   </div>
 
   <div class="tables-section">
     <div class="card" style="margin-bottom:.85rem">
-      <h2>Costo por modelo</h2>
+      <h2 data-i18n="tbl_model_title"></h2>
       <table class="data-table" id="tModel">
         <thead><tr>
-          <th onclick="sortTbl('tModel',0)">Modelo</th>
-          <th onclick="sortTbl('tModel',1)">Sesiones</th>
-          <th onclick="sortTbl('tModel',2)">Input (k)</th>
-          <th onclick="sortTbl('tModel',3)">Output (k)</th>
-          <th onclick="sortTbl('tModel',4)">Cache read (k)</th>
-          <th onclick="sortTbl('tModel',5)">Cache create (k)</th>
-          <th onclick="sortTbl('tModel',6)">Costo USD</th>
+          <th onclick="sortTbl('tModel',0)" data-i18n="th_model"></th>
+          <th onclick="sortTbl('tModel',1)" data-i18n="th_sessions"></th>
+          <th onclick="sortTbl('tModel',2)" data-i18n="th_input"></th>
+          <th onclick="sortTbl('tModel',3)" data-i18n="th_output"></th>
+          <th onclick="sortTbl('tModel',4)" data-i18n="th_cache_read"></th>
+          <th onclick="sortTbl('tModel',5)" data-i18n="th_cache_create"></th>
+          <th onclick="sortTbl('tModel',6)" data-i18n="th_cost_usd"></th>
         </tr></thead>
         <tbody id="tModel-body"></tbody>
       </table>
     </div>
     <div class="card">
-      <h2>Sesiones recientes <span id="sessions-count-label" style="font-weight:400;text-transform:none;font-size:.6rem;color:var(--muted)"></span></h2>
+      <h2><span data-i18n="tbl_sessions_title"></span> <span id="sessions-count-label" style="font-weight:400;text-transform:none;font-size:.6rem;color:var(--muted)"></span></h2>
       <table class="data-table" id="tSessions">
         <thead><tr>
-          <th onclick="sortTbl('tSessions',0)">Fecha</th>
-          <th onclick="sortTbl('tSessions',1)">Proyecto</th>
-          <th onclick="sortTbl('tSessions',2)">Dur.</th>
-          <th onclick="sortTbl('tSessions',3)">Modelo</th>
-          <th onclick="sortTbl('tSessions',4)">Tokens</th>
-          <th onclick="sortTbl('tSessions',5)">Costo</th>
+          <th onclick="sortTbl('tSessions',0)" data-i18n="th_date"></th>
+          <th onclick="sortTbl('tSessions',1)" data-i18n="th_project"></th>
+          <th onclick="sortTbl('tSessions',2)" data-i18n="th_dur"></th>
+          <th onclick="sortTbl('tSessions',3)" data-i18n="th_model_col"></th>
+          <th onclick="sortTbl('tSessions',4)" data-i18n="th_tokens"></th>
+          <th onclick="sortTbl('tSessions',5)" data-i18n="th_cost"></th>
         </tr></thead>
         <tbody id="tSessions-body"></tbody>
       </table>
@@ -250,31 +299,134 @@ def generate_html(sessions: list, tips: list, output_path: Path):
   </div>
 
   <div class="claude-section">
-    <div class="section-title">Analisis con Claude</div>
+    <div class="section-title" data-i18n="claude_title"></div>
     <div class="claude-card">
       <div class="claude-desc">
-        <strong>Copia un prompt pre-armado</strong> con todas tus metricas y pegalo en Claude
-        para obtener analisis mas profundo, recomendaciones personalizadas y patrones
-        que las reglas automaticas no capturan.
+        <strong data-i18n="claude_desc_strong"></strong> <span data-i18n="claude_desc"></span>
       </div>
-      <button class="btn-copy" id="btn-copy" onclick="copyClaudePrompt()">Copiar prompt para Claude</button>
+      <button class="btn-copy" id="btn-copy" onclick="copyClaudePrompt()"></button>
     </div>
   </div>
 
 <script>
 const ALL_SESSIONS  = {sessions_json};
 const TIPS          = {tips_json};
-const CLAUDE_PROMPT = {prompt_json};
+const CLAUDE_PROMPT = {{ es: {prompt_es_json}, en: {prompt_en_json} }};
 
 const MODEL_COLORS = {{ sonnet:'#58a6ff', opus:'#bc8cff', haiku:'#3fb950', mixed:'#f0883e' }};
 const PALETTE = ['#58a6ff','#3fb950','#f0883e','#bc8cff','#f85149','#56d364','#e3b341','#d2a8ff','#ffa657','#ff7b72'];
 const DUR_EDGES  = [0,5,15,30,60,120,9999];
 const DUR_LABELS = ['<5 min','5-15 min','15-30 min','30-60 min','1-2 h','>2 h'];
 
-// ── Filter state ────────────────────────────────────────────────────────────
+// ── i18n ─────────────────────────────────────────────────────────────────────
+const I18N = {{
+  es: {{
+    meta_generated:     'generado',
+    btn_all:            'Todo',
+    kpi_sessions:       'Sesiones',
+    kpi_tokens:         'Tokens totales',
+    kpi_cost:           'Costo estimado',
+    kpi_projects:       'Proyectos',
+    kpi_duration:       'Duracion media',
+    sub_tokens:         'input + output',
+    sub_cost:           'USD aproximado',
+    sub_duration:       'por sesion',
+    chart_time:         'Tokens por dia (input / output / cache)',
+    chart_proj:         'Top proyectos (tokens)',
+    chart_model:        'Modelo primario por sesion',
+    chart_dur:          'Distribucion de duracion de sesiones',
+    axis_tokens:        'Tokens',
+    axis_usd:           'USD',
+    ds_input:           'Input',
+    ds_output:          'Output',
+    ds_cache_read:      'Cache read',
+    ds_cache_create:    'Cache create',
+    ds_cost:            'Costo USD',
+    tooltip_sessions:   'sesiones: ',
+    tbl_model_title:    'Costo por modelo',
+    th_model:           'Modelo',
+    th_sessions:        'Sesiones',
+    th_input:           'Input (k)',
+    th_output:          'Output (k)',
+    th_cache_read:      'Cache read (k)',
+    th_cache_create:    'Cache create (k)',
+    th_cost_usd:        'Costo USD',
+    tbl_sessions_title: 'Sesiones recientes',
+    th_date:            'Fecha',
+    th_project:         'Proyecto',
+    th_dur:             'Dur.',
+    th_model_col:       'Modelo',
+    th_tokens:          'Tokens',
+    th_cost:            'Costo',
+    showing_n_of:       'mostrando %n% de %total%',
+    n_sessions:         '%n% sesiones',
+    tips_title:         'Consejos de uso',
+    no_tips:            'Sin alertas — todo se ve bien.',
+    no_data:            'Sin datos para el filtro seleccionado.',
+    claude_title:       'Analisis con Claude',
+    claude_desc_strong: 'Copia un prompt pre-armado',
+    claude_desc:        'con todas tus metricas y pegalo en Claude para obtener analisis mas profundo, recomendaciones personalizadas y patrones que las reglas automaticas no capturan.',
+    btn_copy:           'Copiar prompt para Claude',
+    btn_copied:         '¡Copiado!',
+  }},
+  en: {{
+    meta_generated:     'generated',
+    btn_all:            'All',
+    kpi_sessions:       'Sessions',
+    kpi_tokens:         'Total tokens',
+    kpi_cost:           'Estimated cost',
+    kpi_projects:       'Projects',
+    kpi_duration:       'Avg duration',
+    sub_tokens:         'input + output',
+    sub_cost:           'approx. USD',
+    sub_duration:       'per session',
+    chart_time:         'Tokens per day (input / output / cache)',
+    chart_proj:         'Top projects (tokens)',
+    chart_model:        'Primary model per session',
+    chart_dur:          'Session duration distribution',
+    axis_tokens:        'Tokens',
+    axis_usd:           'USD',
+    ds_input:           'Input',
+    ds_output:          'Output',
+    ds_cache_read:      'Cache read',
+    ds_cache_create:    'Cache create',
+    ds_cost:            'Cost USD',
+    tooltip_sessions:   'sessions: ',
+    tbl_model_title:    'Cost by model',
+    th_model:           'Model',
+    th_sessions:        'Sessions',
+    th_input:           'Input (k)',
+    th_output:          'Output (k)',
+    th_cache_read:      'Cache read (k)',
+    th_cache_create:    'Cache create (k)',
+    th_cost_usd:        'Cost USD',
+    tbl_sessions_title: 'Recent sessions',
+    th_date:            'Date',
+    th_project:         'Project',
+    th_dur:             'Dur.',
+    th_model_col:       'Model',
+    th_tokens:          'Tokens',
+    th_cost:            'Cost',
+    showing_n_of:       'showing %n% of %total%',
+    n_sessions:         '%n% sessions',
+    tips_title:         'Usage tips',
+    no_tips:            'No alerts — everything looks good.',
+    no_data:            'No data for the selected filter.',
+    claude_title:       'Analysis with Claude',
+    claude_desc_strong: 'Copy a pre-built prompt',
+    claude_desc:        "with all your metrics and paste it into Claude for deeper analysis, personalized recommendations, and patterns that automatic rules don't capture.",
+    btn_copy:           'Copy prompt for Claude',
+    btn_copied:         'Copied!',
+  }},
+}};
+
+// ── State ─────────────────────────────────────────────────────────────────────
 let activeDays   = 30;
 let activeModels = new Set(['opus','sonnet','haiku','mixed']);
+let theme = localStorage.getItem('theme') || 'dark';
+let lang  = localStorage.getItem('lang')  || 'es';
 
+// ── Filter helpers ────────────────────────────────────────────────────────────
 function filterSessions() {{
   const cutoff = activeDays > 0
     ? new Date(Date.now() - activeDays * 86400 * 1000)
@@ -287,9 +439,8 @@ function filterSessions() {{
 
 function setDateFilter(days) {{
   activeDays = days;
-  const vals = [7, 30, 90, 0];
-  document.querySelectorAll('.filter-btn').forEach((btn, i) => {{
-    btn.classList.toggle('active', vals[i] === days);
+  document.querySelectorAll('.filter-group .filter-btn').forEach(btn => {{
+    btn.classList.toggle('active', parseInt(btn.dataset.days) === days);
   }});
   applyFilters();
 }}
@@ -300,7 +451,47 @@ function toggleModel(model) {{
   applyFilters();
 }}
 
-// ── Aggregation helpers ─────────────────────────────────────────────────────
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function setTheme(t) {{
+  theme = t;
+  localStorage.setItem('theme', t);
+  document.documentElement.setAttribute('data-theme', t);
+  const isDark = t === 'dark';
+  Chart.defaults.color       = isDark ? '#7d8590' : '#636e7b';
+  Chart.defaults.borderColor = isDark ? '#30363d' : '#d0d7de';
+  document.getElementById('btn-theme').textContent = isDark ? '☀' : '☾';
+  Object.values(charts).forEach(c => c.destroy());
+  initCharts(filterSessions());
+}}
+
+function toggleTheme() {{ setTheme(theme === 'dark' ? 'light' : 'dark'); }}
+
+// ── Language ──────────────────────────────────────────────────────────────────
+function setLang(l) {{
+  lang = l;
+  localStorage.setItem('lang', l);
+  document.documentElement.lang = l;
+  document.getElementById('btn-lang').textContent = l === 'es' ? 'EN' : 'ES';
+  applyLang();
+  updateChartLabels();
+  const container = document.getElementById('tips-container');
+  container.replaceChildren();
+  renderTips();
+  updateSessionsTable(filterSessions());
+}}
+
+function toggleLang() {{ setLang(lang === 'es' ? 'en' : 'es'); }}
+
+function applyLang() {{
+  const i = I18N[lang];
+  document.querySelectorAll('[data-i18n]').forEach(el => {{
+    const key = el.dataset.i18n;
+    if (key in i) el.textContent = i[key];
+  }});
+  document.getElementById('btn-copy').textContent = i.btn_copy;
+}}
+
+// ── Aggregation helpers ───────────────────────────────────────────────────────
 function aggrByDate(sessions) {{
   const map = {{}};
   for (const s of sessions) {{
@@ -355,7 +546,7 @@ function aggrDuration(sessions) {{
   return counts;
 }}
 
-// ── KPIs ────────────────────────────────────────────────────────────────────
+// ── KPIs ──────────────────────────────────────────────────────────────────────
 function updateKPIs(sessions) {{
   if (!sessions.length) {{
     ['s-sessions','s-tokens','s-cost','s-projects','s-duration'].forEach(id =>
@@ -373,15 +564,15 @@ function updateKPIs(sessions) {{
   document.getElementById('s-duration').textContent = avgDur.toFixed(1) + ' min';
 }}
 
-// ── Charts ──────────────────────────────────────────────────────────────────
-Chart.defaults.color       = '#7d8590';
-Chart.defaults.borderColor = '#30363d';
-const GRID  = {{ color: 'rgba(48,54,61,.5)' }};
-const TICKS = {{ color: '#7d8590', font: {{ size:11 }} }};
-
+// ── Charts ────────────────────────────────────────────────────────────────────
 const charts = {{}};
 
 function initCharts(sessions) {{
+  const i      = I18N[lang];
+  const isDark = theme === 'dark';
+  const GRID   = {{ color: isDark ? 'rgba(48,54,61,.5)' : 'rgba(208,215,222,.5)' }};
+  const TICKS  = {{ color: isDark ? '#7d8590' : '#636e7b', font: {{ size:11 }} }};
+
   const {{dates, map}} = aggrByDate(sessions);
   const proj   = aggrByProject(sessions);
   const mCount = aggrByModel(sessions);
@@ -392,24 +583,24 @@ function initCharts(sessions) {{
     data: {{
       labels: dates,
       datasets: [
-        {{ type:'bar',  label:'Input',        data:dates.map(d=>map[d].input),        backgroundColor:'rgba(88,166,255,.5)',  borderColor:'#58a6ff',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' }},
-        {{ type:'bar',  label:'Output',       data:dates.map(d=>map[d].output),       backgroundColor:'rgba(188,140,255,.5)',borderColor:'#bc8cff',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' }},
-        {{ type:'bar',  label:'Cache read',   data:dates.map(d=>map[d].cache_read),   backgroundColor:'rgba(63,185,80,.4)',  borderColor:'#3fb950',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' }},
-        {{ type:'bar',  label:'Cache create', data:dates.map(d=>map[d].cache_create), backgroundColor:'rgba(240,136,62,.4)', borderColor:'#f0883e',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' }},
-        {{ type:'line', label:'Costo USD',    data:dates.map(d=>+map[d].cost.toFixed(4)), borderColor:'#f85149',backgroundColor:'transparent',borderWidth:1.5,pointRadius:2,tension:0.3,yAxisID:'y2' }},
+        {{ type:'bar',  label:i.ds_input,        data:dates.map(d=>map[d].input),        backgroundColor:'rgba(88,166,255,.5)',  borderColor:'#58a6ff',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' }},
+        {{ type:'bar',  label:i.ds_output,       data:dates.map(d=>map[d].output),       backgroundColor:'rgba(188,140,255,.5)',borderColor:'#bc8cff',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' }},
+        {{ type:'bar',  label:i.ds_cache_read,   data:dates.map(d=>map[d].cache_read),   backgroundColor:'rgba(63,185,80,.4)',  borderColor:'#3fb950',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' }},
+        {{ type:'bar',  label:i.ds_cache_create, data:dates.map(d=>map[d].cache_create), backgroundColor:'rgba(240,136,62,.4)', borderColor:'#f0883e',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' }},
+        {{ type:'line', label:i.ds_cost,         data:dates.map(d=>+map[d].cost.toFixed(4)), borderColor:'#f85149',backgroundColor:'transparent',borderWidth:1.5,pointRadius:2,tension:0.3,yAxisID:'y2' }},
       ],
     }},
-    options:{{
+    options: {{
       responsive:true,
       interaction:{{mode:'index',intersect:false}},
       plugins:{{
-        legend:{{labels:{{color:'#7d8590',font:{{size:11}},boxWidth:12}}}},
-        tooltip:{{callbacks:{{afterBody:ctx => ctx[0] ? ['sesiones: '+(map[ctx[0].label]?.sessions??'')] : []}}}}
+        legend:{{labels:{{font:{{size:11}},boxWidth:12}}}},
+        tooltip:{{callbacks:{{afterBody:ctx => ctx[0] ? [i.tooltip_sessions+(map[ctx[0].label]?.sessions??'')] : []}}}}
       }},
       scales:{{
         x: {{stacked:true,grid:GRID,ticks:TICKS}},
-        y: {{stacked:true,grid:GRID,ticks:TICKS,title:{{display:true,text:'Tokens',color:'#7d8590',font:{{size:10}}}}}},
-        y2:{{grid:{{display:false}},ticks:TICKS,position:'right',title:{{display:true,text:'USD',color:'#f85149',font:{{size:10}}}}}},
+        y: {{stacked:true,grid:GRID,ticks:TICKS,title:{{display:true,text:i.axis_tokens,font:{{size:10}}}}}},
+        y2:{{grid:{{display:false}},ticks:TICKS,position:'right',title:{{display:true,text:i.axis_usd,color:'#f85149',font:{{size:10}}}}}},
       }},
     }},
   }});
@@ -421,8 +612,8 @@ function initCharts(sessions) {{
       datasets:[{{data:proj.map(e=>e[1].tokens),backgroundColor:PALETTE,borderWidth:0}}],
     }},
     options:{{responsive:true,plugins:{{
-      legend:{{position:'right',labels:{{color:'#e6edf3',font:{{size:11}},boxWidth:12}}}},
-      tooltip:{{callbacks:{{afterLabel:ctx=>['sesiones: '+proj[ctx.dataIndex][1].sessions,'costo: $'+proj[ctx.dataIndex][1].cost.toFixed(2)]}}}}
+      legend:{{position:'right',labels:{{font:{{size:11}},boxWidth:12}}}},
+      tooltip:{{callbacks:{{afterLabel:ctx=>['sessions: '+proj[ctx.dataIndex][1].sessions,'cost: $'+proj[ctx.dataIndex][1].cost.toFixed(2)]}}}}
     }}}},
   }});
 
@@ -432,17 +623,18 @@ function initCharts(sessions) {{
       labels:mKeys,
       datasets:[{{data:mKeys.map(m=>mCount[m].sessions),backgroundColor:mKeys.map(m=>MODEL_COLORS[m]||'#7d8590'),borderWidth:0}}],
     }},
-    options:{{responsive:true,plugins:{{legend:{{position:'right',labels:{{color:'#e6edf3',font:{{size:11}},boxWidth:12}}}}}}}},
+    options:{{responsive:true,plugins:{{legend:{{position:'right',labels:{{font:{{size:11}},boxWidth:12}}}}}}}},
   }});
 
   charts.dur = new Chart(document.getElementById('cDur'), {{
     type:'bar',
-    data:{{labels:DUR_LABELS,datasets:[{{label:'Sesiones',data:dur,backgroundColor:'rgba(63,185,80,.45)',borderColor:'#3fb950',borderWidth:1,borderRadius:3}}]}},
+    data:{{labels:DUR_LABELS,datasets:[{{label:i.kpi_sessions,data:dur,backgroundColor:'rgba(63,185,80,.45)',borderColor:'#3fb950',borderWidth:1,borderRadius:3}}]}},
     options:{{responsive:true,plugins:{{legend:{{display:false}}}},scales:{{x:{{grid:GRID,ticks:TICKS}},y:{{grid:GRID,ticks:TICKS}}}}}},
   }});
 }}
 
 function updateCharts(sessions) {{
+  const i = I18N[lang];
   const {{dates, map}} = aggrByDate(sessions);
   const ds = charts.time.data.datasets;
   charts.time.data.labels = dates;
@@ -452,14 +644,14 @@ function updateCharts(sessions) {{
   ds[3].data = dates.map(d=>map[d].cache_create);
   ds[4].data = dates.map(d=>+map[d].cost.toFixed(4));
   charts.time.options.plugins.tooltip.callbacks.afterBody =
-    ctx => ctx[0] ? ['sesiones: '+(map[ctx[0].label]?.sessions??'')] : [];
+    ctx => ctx[0] ? [i.tooltip_sessions+(map[ctx[0].label]?.sessions??'')] : [];
   charts.time.update();
 
   const proj = aggrByProject(sessions);
   charts.proj.data.labels = proj.map(e=>e[0]);
   charts.proj.data.datasets[0].data = proj.map(e=>e[1].tokens);
   charts.proj.options.plugins.tooltip.callbacks.afterLabel =
-    ctx => ['sesiones: '+proj[ctx.dataIndex][1].sessions,'costo: $'+proj[ctx.dataIndex][1].cost.toFixed(2)];
+    ctx => ['sessions: '+proj[ctx.dataIndex][1].sessions,'cost: $'+proj[ctx.dataIndex][1].cost.toFixed(2)];
   charts.proj.update();
 
   const mCount = aggrByModel(sessions);
@@ -473,7 +665,25 @@ function updateCharts(sessions) {{
   charts.dur.update();
 }}
 
-// ── Tables ──────────────────────────────────────────────────────────────────
+function updateChartLabels() {{
+  const i  = I18N[lang];
+  const ds = charts.time.data.datasets;
+  ds[0].label = i.ds_input;
+  ds[1].label = i.ds_output;
+  ds[2].label = i.ds_cache_read;
+  ds[3].label = i.ds_cache_create;
+  ds[4].label = i.ds_cost;
+  charts.time.options.scales.y.title.text  = i.axis_tokens;
+  charts.time.options.scales.y2.title.text = i.axis_usd;
+  const {{dates, map}} = aggrByDate(filterSessions());
+  charts.time.options.plugins.tooltip.callbacks.afterBody =
+    ctx => ctx[0] ? [i.tooltip_sessions+(map[ctx[0].label]?.sessions??'')] : [];
+  charts.time.update();
+  charts.dur.data.datasets[0].label = i.kpi_sessions;
+  charts.dur.update();
+}}
+
+// ── Tables ────────────────────────────────────────────────────────────────────
 const tblData = {{}};
 const sortSt  = {{}};
 
@@ -485,21 +695,21 @@ function renderTblBody(id, rows) {{
     const td = tr.insertCell();
     td.colSpan = 10;
     td.className = 'empty-row';
-    td.textContent = 'Sin datos para el filtro seleccionado.';
+    td.textContent = I18N[lang].no_data;
     return;
   }}
   const modelCol = id === 'tSessions' ? 3 : 0;
   for (const row of rows) {{
     const tr = tbody.insertRow();
-    for (let i = 0; i < row.length; i++) {{
+    for (let ci = 0; ci < row.length; ci++) {{
       const td = tr.insertCell();
-      if (i === modelCol && row[i] in MODEL_COLORS) {{
+      if (ci === modelCol && row[ci] in MODEL_COLORS) {{
         const span = document.createElement('span');
-        span.className = 'model-tag ' + row[i];
-        span.textContent = row[i];
+        span.className = 'model-tag ' + row[ci];
+        span.textContent = row[ci];
         td.appendChild(span);
       }} else {{
-        td.textContent = row[i];
+        td.textContent = row[ci];
       }}
     }}
   }}
@@ -517,9 +727,9 @@ function sortTbl(id, col) {{
     return st.asc ? cmp : -cmp;
   }});
   renderTblBody(id, rows);
-  document.querySelectorAll('#'+id+' th').forEach((th,i) => {{
+  document.querySelectorAll('#'+id+' th').forEach((th,ci) => {{
     th.classList.remove('sort-asc','sort-desc');
-    if (i===col) th.classList.add(st.asc?'sort-asc':'sort-desc');
+    if (ci===col) th.classList.add(st.asc?'sort-asc':'sort-desc');
   }});
 }}
 
@@ -542,10 +752,11 @@ function updateModelTable(sessions) {{
 
 function updateSessionsTable(sessions) {{
   const sorted = [...sessions].sort((a,b) => b.datetime.localeCompare(a.datetime));
+  const i      = I18N[lang];
   const label  = document.getElementById('sessions-count-label');
   label.textContent = sessions.length > 20
-    ? '(mostrando 20 de '+sessions.length+')'
-    : '('+sessions.length+' sesiones)';
+    ? i.showing_n_of.replace('%n%', 20).replace('%total%', sessions.length)
+    : i.n_sessions.replace('%n%', sessions.length);
   const rows = sorted.slice(0,20).map(s => [
     s.datetime.slice(0,16).replace('T',' '),
     s.project,
@@ -558,13 +769,13 @@ function updateSessionsTable(sessions) {{
   renderTblBody('tSessions', rows);
 }}
 
-// ── Tips ────────────────────────────────────────────────────────────────────
+// ── Tips ──────────────────────────────────────────────────────────────────────
 function renderTips() {{
   const container = document.getElementById('tips-container');
   if (!TIPS.length) {{
     const p = document.createElement('p');
     p.style.cssText = 'font-size:.75rem;color:var(--muted)';
-    p.textContent = 'Sin alertas -- todo se ve bien.';
+    p.textContent = I18N[lang].no_tips;
     container.appendChild(p);
     return;
   }}
@@ -572,15 +783,15 @@ function renderTips() {{
     const wrap  = document.createElement('div');
     wrap.className = 'tip ' + t.level;
     const icon  = document.createElement('div');
-    icon.className = 'tip-icon';
-    icon.textContent = t.level==='warn' ? '!' : t.level==='ok' ? 'v' : 'i';
+    icon.className   = 'tip-icon';
+    icon.textContent = t.level === 'warn' ? '!' : t.level === 'ok' ? 'v' : 'i';
     const body  = document.createElement('div');
     const title = document.createElement('div');
     title.className  = 'tip-title';
-    title.textContent = t.title;
+    title.textContent = t['title_' + lang];
     const desc  = document.createElement('div');
-    desc.className  = 'tip-body';
-    desc.textContent = t.body;
+    desc.className   = 'tip-body';
+    desc.textContent = t['body_' + lang];
     body.appendChild(title);
     body.appendChild(desc);
     wrap.appendChild(icon);
@@ -589,7 +800,7 @@ function renderTips() {{
   }}
 }}
 
-// ── Apply filters ───────────────────────────────────────────────────────────
+// ── Apply filters ─────────────────────────────────────────────────────────────
 function applyFilters() {{
   const f = filterSessions();
   updateKPIs(f);
@@ -598,17 +809,18 @@ function applyFilters() {{
   updateSessionsTable(f);
 }}
 
-// ── Claude prompt copy ──────────────────────────────────────────────────────
+// ── Claude prompt copy ────────────────────────────────────────────────────────
 function copyClaudePrompt() {{
   const btn   = document.getElementById('btn-copy');
-  const reset = () => {{ btn.textContent='Copiar prompt para Claude'; btn.classList.remove('copied'); }};
-  const done  = () => {{ btn.textContent='Copiado!'; btn.classList.add('copied'); setTimeout(reset,2500); }};
+  const i     = I18N[lang];
+  const reset = () => {{ btn.textContent = i.btn_copy; btn.classList.remove('copied'); }};
+  const done  = () => {{ btn.textContent = i.btn_copied; btn.classList.add('copied'); setTimeout(reset, 2500); }};
   if (navigator.clipboard?.writeText) {{
-    navigator.clipboard.writeText(CLAUDE_PROMPT).then(done).catch(fallback);
+    navigator.clipboard.writeText(CLAUDE_PROMPT[lang]).then(done).catch(fallback);
   }} else {{ fallback(); }}
   function fallback() {{
     const ta = document.createElement('textarea');
-    ta.value = CLAUDE_PROMPT;
+    ta.value = CLAUDE_PROMPT[lang];
     ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
     document.body.appendChild(ta);
     ta.focus(); ta.select();
@@ -617,13 +829,21 @@ function copyClaudePrompt() {{
   }}
 }}
 
-// ── Init ────────────────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.documentElement.setAttribute('data-theme', theme);
+document.documentElement.lang = lang;
+Chart.defaults.color       = theme === 'dark' ? '#7d8590' : '#636e7b';
+Chart.defaults.borderColor = theme === 'dark' ? '#30363d' : '#d0d7de';
+if (theme === 'light') document.getElementById('btn-theme').textContent = '☾';
+if (lang  !== 'es')   document.getElementById('btn-lang').textContent  = 'ES';
+
 const initial = filterSessions();
 initCharts(initial);
 updateKPIs(initial);
 updateModelTable(initial);
 updateSessionsTable(initial);
 renderTips();
+applyLang();
 </script>
 </body>
 </html>"""
