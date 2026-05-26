@@ -22,12 +22,14 @@ python generate.py
 tachikoma-logs/
 ├── generate.py      ← entrypoint: argparse + orquestación
 ├── log_parser.py    ← PRICING, get_tier(), calc_cost(), parse_sessions()
-├── charts.py        ← DUR_EDGES, DUR_LABELS, build_chart_data()
 ├── tips.py          ← compute_tips()
-└── html_builder.py  ← build_claude_prompt(), generate_html()
+├── html_builder.py  ← build_claude_prompt(), generate_html()
+└── tests/
+    ├── test_log_parser.py
+    └── test_tips.py
 ```
 
-Flujo de datos: `parse_sessions()` → `compute_tips()` + `build_chart_data()` → `build_claude_prompt()` → `generate_html()`
+Flujo de datos: `parse_sessions()` → `compute_tips()` → `build_claude_prompt()` → `generate_html()`
 
 ## Fuente de datos
 
@@ -38,7 +40,16 @@ Flujo de datos: `parse_sessions()` → `compute_tips()` + `build_chart_data()` �
 
 ## Precios
 
-Hardcodeados en `parser.py` (dict `PRICES`). Actualizar al inicio de cada versión si Anthropic cambia los precios. Última actualización: 2026-05 (Opus $15/$75, Sonnet $3/$15, Haiku $0.80/$4 por 1M tokens).
+Hardcodeados en `log_parser.py` (dict `PRICES`). Actualizar al inicio de cada versión si Anthropic cambia los precios. Última actualización: 2026-05 (Opus $15/$75, Sonnet $3/$15, Haiku $0.80/$4 por 1M tokens).
+
+## Tests
+
+```bash
+pip install pytest pytest-cov   # solo la primera vez
+python -m pytest -v
+```
+
+Cubre `get_tier()`, `calc_cost()` y las reglas de `compute_tips()`.
 
 ## Linter
 
