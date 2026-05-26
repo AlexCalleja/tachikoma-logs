@@ -12,8 +12,8 @@ Dashboard de uso de Claude Code. Genera un HTML estático a partir de los logs J
 ## Cómo generar el dashboard
 
 ```bash
-python generate.py
-# output: docs/usage.html (gitignoreado)
+python generate.py                        # output: docs/usage.html (gitignoreado)
+python generate.py --output path/out.html # ruta personalizada
 ```
 
 ## Estructura de módulos
@@ -22,14 +22,16 @@ python generate.py
 tachikoma-logs/
 ├── generate.py      ← entrypoint: argparse + orquestación
 ├── log_parser.py    ← PRICING, get_tier(), calc_cost(), parse_sessions()
-├── tips.py          ← compute_tips()
-├── html_builder.py  ← build_claude_prompt(), generate_html()
+├── tips.py          ← compute_tips() → tips bilingües {level, title_es, body_es, title_en, body_en}
+├── html_builder.py  ← build_claude_prompt(sessions, tips, lang), generate_html()
 └── tests/
     ├── test_log_parser.py
     └── test_tips.py
 ```
 
 Flujo de datos: `parse_sessions()` → `compute_tips()` → `build_claude_prompt()` → `generate_html()`
+
+La estructura es plana por diseño (YAGNI) — mover los módulos a un paquete `tachikoma/` tiene sentido cuando haya suficientes módulos que lo justifiquen.
 
 ## Fuente de datos
 
@@ -45,7 +47,9 @@ Hardcodeados en `log_parser.py` (dict `PRICES`). Actualizar al inicio de cada ve
 ## Tests
 
 ```bash
-pip install pytest pytest-cov   # solo la primera vez
+# desarrollo local (solo la primera vez)
+pip install pytest pytest-cov
+
 python -m pytest -v
 ```
 
@@ -59,3 +63,12 @@ ruff format .
 ```
 
 Configurado en `pyproject.toml`. Correr antes de cada commit.
+
+## CI
+
+GitHub Actions corre automáticamente en cada push y PR a `develop` o `master`:
+
+1. `ruff check .` — lint
+2. `python -m pytest -v` — tests
+
+La rama `master` tiene branch protection activa: el CI debe estar en verde antes de poder mergear.

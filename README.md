@@ -19,6 +19,8 @@ Open `docs/usage.html` in your browser.
 - Session duration histogram
 - Rule-based usage tips (cache rate, Opus %, short/long sessions, cost concentration)
 - "Copy prompt for Claude" button — pre-formatted metrics ready to paste for deeper AI analysis
+- Dark / light theme toggle (persists via localStorage)
+- Spanish / English language toggle — all labels, tips, and Claude prompt
 
 ## Options
 
@@ -30,6 +32,10 @@ python generate.py --output path/to/output.html
 
 - Python 3.9+
 - No external dependencies (stdlib only + Chart.js via CDN)
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ## Notes
 
