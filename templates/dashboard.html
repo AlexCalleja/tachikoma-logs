@@ -1178,7 +1178,7 @@ function renderHeatmap(sessions) {
   for (let h = 0; h < 24; h++) {
     const lbl = document.createElement('div');
     lbl.className = 'hm-label hm-hour';
-    lbl.textContent = h % 6 === 0 ? h : '';
+    lbl.textContent = h;
     g.appendChild(lbl);
   }
 
