@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-27
+
+### Added
+- Activity heatmap: hour × day-of-week grid (GitHub-style, reactive to filters)
+- `message_count` field extracted per session
+- Sessions table: relative timestamps ("hace 2h"), `stop_reason` column, "Ver todas" button with scrollable container
+- Tips and Claude prompt fully reactive to filters — computed in JS (`computeTips`, `buildClaudePrompt`)
+- Doughnut legends show count: "cli (45)", "end_turn (120)"
+- Date range label in filter bar showing active period
+- Expandable prompt preview before copying
+- Mobile: `.grid-3` responds at 900px/600px, tables scroll horizontally, claude-card stacks vertically
+
+### Changed
+- AppData sessions (Claude Code internal Haiku ops) grouped as project `"temp"` instead of being discarded
+- `html_builder.py` simplified — no longer embeds static tips or prompt; `generate.py` no longer calls `compute_tips`
+- `tips.py` retained as canonical Python spec (tested); JS port is the live implementation
+
+### Fixed
+- AppData filter used full path instead of project dir name — broke all pytest sessions under `AppData/Local/Temp`
+
 ## [0.4.0] — 2026-05-26
 
 ### Added
