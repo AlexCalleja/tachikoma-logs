@@ -41,6 +41,8 @@ def parse_sessions() -> list[dict]:
     for jsonl_file in sorted(projects_dir.rglob("*.jsonl")):
         if "subagents" in jsonl_file.parts:
             continue
+        if "AppData" in jsonl_file.relative_to(projects_dir).parts[0]:
+            continue
 
         session_id = jsonl_file.stem
         entries = []
@@ -59,6 +61,7 @@ def parse_sessions() -> list[dict]:
         cwd = ""
         entrypoint = "unknown"
         perm_counter: Counter = Counter()
+        message_count = 0
         for e in entries:
             if not cwd and e.get("cwd"):
                 cwd = e["cwd"]
@@ -66,6 +69,11 @@ def parse_sessions() -> list[dict]:
                 entrypoint = e["entrypoint"]
             if e.get("permissionMode"):
                 perm_counter[e["permissionMode"]] += 1
+            if e.get("messageCount") is not None:
+                try:
+                    message_count = max(message_count, int(e["messageCount"]))
+                except (ValueError, TypeError):
+                    pass
 
         project = Path(cwd.replace("\\", "/")).name if cwd else "unknown"
         permission_mode = perm_counter.most_common(1)[0][0] if perm_counter else "unknown"
@@ -149,6 +157,7 @@ def parse_sessions() -> list[dict]:
             "permission_mode": permission_mode,
             "stop_reason":     stop_reason,
             "tools":           dict(tool_counter),
+            "message_count":   message_count,
         }
 
     result = sorted(sessions.values(), key=lambda s: s["datetime"])

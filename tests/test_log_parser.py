@@ -137,3 +137,40 @@ def test_parse_sessions_extracts_tools(monkeypatch, tmp_path):
     monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
     sessions = parse_sessions()
     assert sessions[0]["tools"] == {"Read": 2, "Edit": 1}
+
+
+def test_parse_sessions_filters_appdata_paths(monkeypatch, tmp_path):
+    projects_dir = tmp_path / ".claude" / "projects"
+    # Write a session under a path containing "AppData"
+    appdata_dir = projects_dir / "C--Users-user-AppData-Local-Temp" / "test-project"
+    appdata_dir.mkdir(parents=True, exist_ok=True)
+    (appdata_dir / "sess_appdata.jsonl").write_text(
+        json.dumps(_base_assistant()), encoding="utf-8"
+    )
+    # Write a normal session
+    _write_session(projects_dir, "sess_normal", [_base_assistant(msg_id="msg_006")])
+    monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
+    sessions = parse_sessions()
+    ids = [s["session_id"] for s in sessions]
+    assert "sess_appdata" not in ids
+    assert "sess_normal" in ids
+
+
+def test_parse_sessions_extracts_message_count(monkeypatch, tmp_path):
+    projects_dir = tmp_path / ".claude" / "projects"
+    entries = [
+        {**_base_assistant(msg_id="msg_007"), "messageCount": 3},
+        {**_base_assistant(msg_id="msg_008"), "messageCount": 7},
+    ]
+    _write_session(projects_dir, "sess1", entries)
+    monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
+    sessions = parse_sessions()
+    assert sessions[0]["message_count"] == 7
+
+
+def test_parse_sessions_message_count_defaults_to_zero(monkeypatch, tmp_path):
+    projects_dir = tmp_path / ".claude" / "projects"
+    _write_session(projects_dir, "sess1", [_base_assistant(msg_id="msg_009")])
+    monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
+    sessions = parse_sessions()
+    assert sessions[0]["message_count"] == 0

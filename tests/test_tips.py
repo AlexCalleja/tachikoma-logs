@@ -19,6 +19,7 @@ def make_session(**kwargs):
         "permission_mode": "default",
         "stop_reason":     "end_turn",
         "tools":           {},
+        "message_count":   10,
     }
     base.update(kwargs)
     return base
