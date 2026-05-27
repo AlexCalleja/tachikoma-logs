@@ -139,7 +139,7 @@ def test_parse_sessions_extracts_tools(monkeypatch, tmp_path):
     assert sessions[0]["tools"] == {"Read": 2, "Edit": 1}
 
 
-def test_parse_sessions_filters_appdata_paths(monkeypatch, tmp_path):
+def test_parse_sessions_groups_appdata_as_temp(monkeypatch, tmp_path):
     projects_dir = tmp_path / ".claude" / "projects"
     # Write a session under a path containing "AppData"
     appdata_dir = projects_dir / "C--Users-user-AppData-Local-Temp" / "test-project"
@@ -151,9 +151,10 @@ def test_parse_sessions_filters_appdata_paths(monkeypatch, tmp_path):
     _write_session(projects_dir, "sess_normal", [_base_assistant(msg_id="msg_006")])
     monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
     sessions = parse_sessions()
-    ids = [s["session_id"] for s in sessions]
-    assert "sess_appdata" not in ids
-    assert "sess_normal" in ids
+    by_id = {s["session_id"]: s for s in sessions}
+    assert "sess_appdata" in by_id
+    assert by_id["sess_appdata"]["project"] == "temp"
+    assert "sess_normal" in by_id
 
 
 def test_parse_sessions_extracts_message_count(monkeypatch, tmp_path):

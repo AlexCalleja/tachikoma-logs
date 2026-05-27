@@ -41,8 +41,7 @@ def parse_sessions() -> list[dict]:
     for jsonl_file in sorted(projects_dir.rglob("*.jsonl")):
         if "subagents" in jsonl_file.parts:
             continue
-        if "AppData" in jsonl_file.relative_to(projects_dir).parts[0]:
-            continue
+        is_appdata = "AppData" in jsonl_file.relative_to(projects_dir).parts[0]
 
         session_id = jsonl_file.stem
         entries = []
@@ -75,7 +74,7 @@ def parse_sessions() -> list[dict]:
                 except (ValueError, TypeError):
                     pass
 
-        project = Path(cwd.replace("\\", "/")).name if cwd else "unknown"
+        project = "temp" if is_appdata else (Path(cwd.replace("\\", "/")).name if cwd else "unknown")
         permission_mode = perm_counter.most_common(1)[0][0] if perm_counter else "unknown"
 
         seen_msg_ids: set = set()

@@ -110,6 +110,15 @@
     .model-tag.mixed  { background:rgba(251,146,60,.15);  color:var(--orange) }
     .empty-row { color:var(--muted); font-style:italic }
 
+    /* ── Heatmap ── */
+    .heatmap-wrap { overflow-x:auto }
+    .heatmap-grid { display:grid; grid-template-columns:2.5rem repeat(24,minmax(0,1fr)); gap:3px; min-width:500px }
+    .hm-label { font-family:'JetBrains Mono',monospace; font-size:.55rem; color:var(--muted); display:flex; align-items:center }
+    .hm-hour  { justify-content:center; padding-bottom:3px }
+    .hm-day   { justify-content:flex-end; padding-right:5px }
+    .hm-cell  { aspect-ratio:1; border-radius:2px; cursor:default; transition:transform .1s, opacity .1s }
+    .hm-cell:hover { transform:scale(1.4); z-index:1; position:relative }
+
     /* ── Claude prompt ── */
     .claude-section { margin-bottom:1.25rem }
     .claude-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.1rem 1.4rem; display:flex; align-items:center; gap:1.1rem }
@@ -177,6 +186,7 @@
     <div class="card"><h2 data-i18n="chart_perm"></h2><canvas id="cPerm"></canvas></div>
     <div class="card"><h2 data-i18n="chart_stopreason"></h2><canvas id="cStopReason"></canvas></div>
     <div class="card full"><h2 data-i18n="chart_tools"></h2><canvas id="cTools" style="max-height:320px"></canvas></div>
+    <div class="card full"><h2 data-i18n="chart_heatmap"></h2><div id="heatmap-container"></div></div>
   </div>
 
   <div class="tips-section">
@@ -257,6 +267,8 @@ const I18N = {
     chart_perm:         'Modo de permisos',
     chart_stopreason:   'Razon de fin de sesion',
     chart_tools:        'Top 10 herramientas (llamadas totales)',
+    chart_heatmap:      'Actividad por hora y día de semana',
+    days:               ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'],
     axis_tokens:        'Tokens',
     axis_usd:           'USD',
     ds_input:           'Input',
@@ -310,6 +322,8 @@ const I18N = {
     chart_perm:         'Permission mode',
     chart_stopreason:   'Session end reason',
     chart_tools:        'Top 10 tools (total calls)',
+    chart_heatmap:      'Activity by hour and day of week',
+    days:               ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
     axis_tokens:        'Tokens',
     axis_usd:           'USD',
     ds_input:           'Input',
@@ -387,7 +401,9 @@ function setTheme(t) {
   Chart.defaults.borderColor = isDark ? 'rgba(79,158,255,.15)' : 'rgba(21,101,192,.15)';
   document.getElementById('btn-theme').textContent = isDark ? '☀' : '☾';
   Object.values(charts).forEach(c => c.destroy());
-  initCharts(filterSessions());
+  const _tf = filterSessions();
+  initCharts(_tf);
+  renderHeatmap(_tf);
 }
 
 function toggleTheme() { setTheme(theme === 'dark' ? 'light' : 'dark'); }
@@ -403,7 +419,9 @@ function setLang(l) {
   const container = document.getElementById('tips-container');
   container.replaceChildren();
   renderTips();
-  updateSessionsTable(filterSessions());
+  const _lf = filterSessions();
+  updateSessionsTable(_lf);
+  renderHeatmap(_lf);
 }
 
 function toggleLang() { setLang(lang === 'es' ? 'en' : 'es'); }
@@ -807,6 +825,68 @@ function renderTips() {
   }
 }
 
+// ── Heatmap ───────────────────────────────────────────────────────────────────
+function buildHeatmapGrid(sessions) {
+  const grid = Array.from({length:7}, () => new Array(24).fill(0));
+  for (const s of sessions) {
+    const d    = new Date(s.datetime);
+    const dow  = (d.getDay() + 6) % 7; // 0=Mon..6=Sun
+    const hour = d.getHours();
+    grid[dow][hour]++;
+  }
+  return grid;
+}
+
+function renderHeatmap(sessions) {
+  const container = document.getElementById('heatmap-container');
+  container.replaceChildren();
+  const i    = I18N[lang];
+  const grid = buildHeatmapGrid(sessions);
+  const max  = Math.max(1, ...grid.flat());
+  const isDark = theme === 'dark';
+  const rgb  = isDark ? '79,158,255' : '21,101,192';
+  const alphas = [.07, .22, .44, .66, .88];
+
+  function cellColor(count) {
+    if (count === 0) return `rgba(${rgb},.05)`;
+    return `rgba(${rgb},${alphas[Math.min(4, Math.ceil(count / max * 4))]})`;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'heatmap-wrap';
+  const g = document.createElement('div');
+  g.className = 'heatmap-grid';
+
+  // Hour label row
+  const corner = document.createElement('div');
+  corner.className = 'hm-label';
+  g.appendChild(corner);
+  for (let h = 0; h < 24; h++) {
+    const lbl = document.createElement('div');
+    lbl.className = 'hm-label hm-hour';
+    lbl.textContent = h % 6 === 0 ? h : '';
+    g.appendChild(lbl);
+  }
+
+  // Day rows
+  for (let d = 0; d < 7; d++) {
+    const dayLbl = document.createElement('div');
+    dayLbl.className = 'hm-label hm-day';
+    dayLbl.textContent = i.days[d];
+    g.appendChild(dayLbl);
+    for (let h = 0; h < 24; h++) {
+      const cell = document.createElement('div');
+      cell.className = 'hm-cell';
+      cell.style.background = cellColor(grid[d][h]);
+      cell.title = `${i.days[d]} ${String(h).padStart(2,'0')}:00 — ${grid[d][h]}`;
+      g.appendChild(cell);
+    }
+  }
+
+  wrap.appendChild(g);
+  container.appendChild(wrap);
+}
+
 // ── Apply filters ─────────────────────────────────────────────────────────────
 function applyFilters() {
   const f = filterSessions();
@@ -814,6 +894,7 @@ function applyFilters() {
   updateCharts(f);
   updateModelTable(f);
   updateSessionsTable(f);
+  renderHeatmap(f);
 }
 
 // ── Claude prompt copy ────────────────────────────────────────────────────────
@@ -850,6 +931,7 @@ updateKPIs(initial);
 updateModelTable(initial);
 updateSessionsTable(initial);
 renderTips();
+renderHeatmap(initial);
 applyLang();
 </script>
 </body>
