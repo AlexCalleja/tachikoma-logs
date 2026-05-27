@@ -163,6 +163,7 @@
       <label class="model-check"><input type="checkbox" value="haiku"  checked onchange="toggleModel('haiku')">  Haiku</label>
       <label class="model-check"><input type="checkbox" value="mixed"  checked onchange="toggleModel('mixed')">  Mixed</label>
     </div>
+    <span id="date-range-label" style="font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-left:.25rem"></span>
     <div class="toggle-group">
       <button class="filter-btn" id="btn-lang"  onclick="toggleLang()">EN</button>
       <button class="filter-btn" id="btn-theme" onclick="toggleTheme()">☀</button>
@@ -239,7 +240,13 @@
       <div class="claude-desc">
         <strong data-i18n="claude_desc_strong"></strong> <span data-i18n="claude_desc"></span>
       </div>
-      <button class="btn-copy" id="btn-copy" onclick="copyClaudePrompt()"></button>
+      <div style="display:flex;flex-direction:column;gap:.4rem;align-items:flex-end;flex-shrink:0">
+        <button class="btn-copy" id="btn-copy" onclick="copyClaudePrompt()"></button>
+        <button class="filter-btn" id="btn-preview" onclick="togglePromptPreview()"></button>
+      </div>
+    </div>
+    <div id="prompt-preview" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin-top:.6rem;overflow-x:auto">
+      <pre id="prompt-preview-text" style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:var(--muted);line-height:1.65;white-space:pre-wrap;word-break:break-word;margin:0"></pre>
     </div>
   </div>
 
@@ -310,6 +317,8 @@ const I18N = {
     claude_desc:        'con todas tus metricas y pegalo en Claude para obtener analisis mas profundo, recomendaciones personalizadas y patrones que las reglas automaticas no capturan.',
     btn_copy:           'Copiar prompt para Claude',
     btn_copied:         '¡Copiado!',
+    btn_preview:        'Ver prompt',
+    btn_preview_hide:   'Ocultar',
   },
   en: {
     meta_generated:     'generated',
@@ -368,6 +377,8 @@ const I18N = {
     claude_desc:        "with all your metrics and paste it into Claude for deeper analysis, personalized recommendations, and patterns that automatic rules don't capture.",
     btn_copy:           'Copy prompt for Claude',
     btn_copied:         'Copied!',
+    btn_preview:        'Preview prompt',
+    btn_preview_hide:   'Hide',
   },
 };
 
@@ -443,7 +454,9 @@ function applyLang() {
     const key = el.dataset.i18n;
     if (key in i) el.textContent = i[key];
   });
-  document.getElementById('btn-copy').textContent = i.btn_copy;
+  document.getElementById('btn-copy').textContent    = i.btn_copy;
+  document.getElementById('btn-preview').textContent = showPromptPreview ? i.btn_preview_hide : i.btn_preview;
+  _refreshPromptPreview();
 }
 
 // ── Aggregation helpers ───────────────────────────────────────────────────────
@@ -613,7 +626,15 @@ function initCharts(sessions) {
 
   const doughnutOpts = (pos) => ({
     responsive:true,
-    plugins:{legend:{position:pos,labels:{font:{size:11},boxWidth:12}}},
+    plugins:{legend:{position:pos,labels:{font:{size:11},boxWidth:12,
+      generateLabels: (chart) => {
+        const base = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+        return base.map((item,i) => ({
+          ...item,
+          text: `${chart.data.labels[i]} (${chart.data.datasets[0].data[i]})`,
+        }));
+      },
+    }}},
   });
 
   charts.entrypoint = new Chart(document.getElementById('cEntrypoint'), {
@@ -1163,6 +1184,37 @@ function applyFilters() {
   updateSessionsTable(f);
   renderHeatmap(f);
   renderTips(f);
+  updateDateRangeLabel(f);
+  _refreshPromptPreview();
+}
+
+// ── Date range label ─────────────────────────────────────────────────────────
+function updateDateRangeLabel(sessions) {
+  const el = document.getElementById('date-range-label');
+  if (!sessions.length) { el.textContent = ''; return; }
+  const dates = sessions.map(s => s.date).sort();
+  el.textContent = dates[0] === dates[dates.length-1]
+    ? dates[0]
+    : `${dates[0]} → ${dates[dates.length-1]}`;
+}
+
+// ── Prompt preview ────────────────────────────────────────────────────────────
+let showPromptPreview = false;
+
+function togglePromptPreview() {
+  showPromptPreview = !showPromptPreview;
+  const el  = document.getElementById('prompt-preview');
+  const btn = document.getElementById('btn-preview');
+  const i   = I18N[lang];
+  el.style.display = showPromptPreview ? '' : 'none';
+  btn.textContent  = showPromptPreview ? i.btn_preview_hide : i.btn_preview;
+  if (showPromptPreview) _refreshPromptPreview();
+}
+
+function _refreshPromptPreview() {
+  if (!showPromptPreview) return;
+  const f = filterSessions();
+  document.getElementById('prompt-preview-text').textContent = buildClaudePrompt(f, computeTips(f), lang);
 }
 
 // ── Claude prompt copy ────────────────────────────────────────────────────────
@@ -1202,6 +1254,7 @@ updateModelTable(initial);
 updateSessionsTable(initial);
 renderTips(initial);
 renderHeatmap(initial);
+updateDateRangeLabel(initial);
 applyLang();
 </script>
 </body>
