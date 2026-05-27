@@ -22,8 +22,9 @@ python generate.py --output path/out.html # ruta personalizada
 tachikoma-logs/
 ├── generate.py      ← entrypoint: argparse + orquestación
 ├── log_parser.py    ← PRICING, get_tier(), calc_cost(), parse_sessions()
-├── tips.py          ← compute_tips() → tips bilingües {level, title_es, body_es, title_en, body_en}
-├── html_builder.py  ← build_claude_prompt(sessions, tips, lang), generate_html()
+├── tips.py          ← compute_tips() — spec canónica de las 8 reglas (Python); la implementación
+│                      viva está portada a JS en dashboard.html (computeTips / buildClaudePrompt)
+├── html_builder.py  ← generate_html(): inyecta __SESSIONS_JSON__ y __GENERATED_AT__ en el template
 ├── templates/
 │   └── dashboard.html  ← HTML/CSS/JS del dashboard; generate_html() inyecta datos via __PLACEHOLDER__
 └── tests/
@@ -31,7 +32,7 @@ tachikoma-logs/
     └── test_tips.py
 ```
 
-Flujo de datos: `parse_sessions()` → `compute_tips()` → `build_claude_prompt()` → `generate_html()`
+Flujo de datos: `parse_sessions()` → `generate_html()` → browser computes tips + prompt en JS
 
 La estructura es plana por diseño (YAGNI) — mover los módulos a un paquete `tachikoma/` tiene sentido cuando haya suficientes módulos que lo justifiquen.
 
@@ -41,7 +42,8 @@ La estructura es plana por diseño (YAGNI) — mover los módulos a un paquete `
 - Se omiten paths que contengan `subagents` en algún componente
 - Deduplicación por `message.id` dentro de cada sesión — obligatoria (sin ella los tokens se inflan 2-3x por streaming)
 - Solo se procesan entradas con `type == "assistant"` y `message.usage` con tokens > 0
-- Campos adicionales extraídos por sesión: `entrypoint` (primer valor no-nulo), `permission_mode` (el más frecuente), `stop_reason` (el más frecuente excluyendo `tool_use`), `tools` (dict `{nombre: llamadas_totales}`)
+- Sesiones bajo paths con `AppData` en el nombre de directorio del proyecto se agrupan como proyecto `"temp"` (operaciones internas de Claude Code con Haiku)
+- Campos adicionales extraídos por sesión: `entrypoint` (primer valor no-nulo), `permission_mode` (el más frecuente), `stop_reason` (el más frecuente excluyendo `tool_use`), `tools` (dict `{nombre: llamadas_totales}`), `message_count` (máximo `messageCount` visto)
 - `tool_use` se excluye de `stop_reason` porque domina (cada llamada a herramienta lo genera) y oculta los valores informativos
 
 ## Precios
@@ -57,7 +59,7 @@ pip install pytest pytest-cov
 python -m pytest -v
 ```
 
-Cubre `get_tier()`, `calc_cost()`, las reglas de `compute_tips()`, y los nuevos campos de sesión (`entrypoint`, `permission_mode`, `stop_reason`, `tools`).
+Cubre `get_tier()`, `calc_cost()`, las reglas de `compute_tips()`, y los campos de sesión (`entrypoint`, `permission_mode`, `stop_reason`, `tools`, `message_count`, filtro AppData). 27 tests en total.
 
 ## Linter
 
