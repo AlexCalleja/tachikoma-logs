@@ -119,6 +119,9 @@
     .hm-cell  { aspect-ratio:1; border-radius:2px; cursor:default; transition:transform .1s, opacity .1s }
     .hm-cell:hover { transform:scale(1.4); z-index:1; position:relative }
 
+    /* ── Sessions table wrap ── */
+    #sessions-table-wrap { overflow-y:auto; transition:max-height .25s ease }
+
     /* ── Claude prompt ── */
     .claude-section { margin-bottom:1.25rem }
     .claude-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.1rem 1.4rem; display:flex; align-items:center; gap:1.1rem }
@@ -212,17 +215,21 @@
     </div>
     <div class="card">
       <h2><span data-i18n="tbl_sessions_title"></span> <span id="sessions-count-label" style="font-weight:400;text-transform:none;font-size:.6rem;color:var(--muted)"></span></h2>
-      <table class="data-table" id="tSessions">
-        <thead><tr>
-          <th onclick="sortTbl('tSessions',0)" data-i18n="th_date"></th>
-          <th onclick="sortTbl('tSessions',1)" data-i18n="th_project"></th>
-          <th onclick="sortTbl('tSessions',2)" data-i18n="th_dur"></th>
-          <th onclick="sortTbl('tSessions',3)" data-i18n="th_model_col"></th>
-          <th onclick="sortTbl('tSessions',4)" data-i18n="th_tokens"></th>
-          <th onclick="sortTbl('tSessions',5)" data-i18n="th_cost"></th>
-        </tr></thead>
-        <tbody id="tSessions-body"></tbody>
-      </table>
+      <div id="sessions-table-wrap">
+        <table class="data-table" id="tSessions">
+          <thead><tr>
+            <th onclick="sortTbl('tSessions',0)" data-i18n="th_date"></th>
+            <th onclick="sortTbl('tSessions',1)" data-i18n="th_project"></th>
+            <th onclick="sortTbl('tSessions',2)" data-i18n="th_dur"></th>
+            <th onclick="sortTbl('tSessions',3)" data-i18n="th_model_col"></th>
+            <th onclick="sortTbl('tSessions',4)" data-i18n="th_tokens"></th>
+            <th onclick="sortTbl('tSessions',5)" data-i18n="th_cost"></th>
+            <th onclick="sortTbl('tSessions',6)" data-i18n="th_stop_reason"></th>
+          </tr></thead>
+          <tbody id="tSessions-body"></tbody>
+        </table>
+      </div>
+      <button id="btn-show-all" class="filter-btn" style="margin-top:.75rem;display:none" onclick="toggleAllSessions()"></button>
     </div>
   </div>
 
@@ -292,8 +299,11 @@ const I18N = {
     th_model_col:       'Modelo',
     th_tokens:          'Tokens',
     th_cost:            'Costo',
+    th_stop_reason:     'Stop reason',
     showing_n_of:       'mostrando %n% de %total%',
     n_sessions:         '%n% sesiones',
+    show_all:           'Ver todas (%n% sesiones)',
+    show_less:          'Ver menos',
     tips_title:         'Consejos de uso',
     no_tips:            'Sin alertas — todo se ve bien.',
     no_data:            'Sin datos para el filtro seleccionado.',
@@ -347,8 +357,11 @@ const I18N = {
     th_model_col:       'Model',
     th_tokens:          'Tokens',
     th_cost:            'Cost',
+    th_stop_reason:     'Stop reason',
     showing_n_of:       'showing %n% of %total%',
     n_sessions:         '%n% sessions',
+    show_all:           'Show all (%n% sessions)',
+    show_less:          'Show less',
     tips_title:         'Usage tips',
     no_tips:            'No alerts — everything looks good.',
     no_data:            'No data for the selected filter.',
@@ -711,6 +724,18 @@ function updateChartLabels() {
 // ── Tables ────────────────────────────────────────────────────────────────────
 const tblData = {};
 const sortSt  = {};
+let showAllSessions = false;
+
+function relativeTime(isoStr) {
+  const mins = Math.floor((Date.now() - new Date(isoStr).getTime()) / 60000);
+  if (mins < 2)  return lang === 'es' ? 'ahora'        : 'just now';
+  if (mins < 60) return lang === 'es' ? `hace ${mins}m` : `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return lang === 'es' ? `hace ${hrs}h`  : `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return lang === 'es' ? `hace ${days}d` : `${days}d ago`;
+  return lang === 'es' ? `hace ${Math.floor(days/30)}mo` : `${Math.floor(days/30)}mo ago`;
+}
 
 function renderTblBody(id, rows) {
   const tbody = document.getElementById(id + '-body');
@@ -751,7 +776,8 @@ function sortTbl(id, col) {
     const cmp = (!isNaN(an) && !isNaN(bn)) ? an-bn : av.localeCompare(bv);
     return st.asc ? cmp : -cmp;
   });
-  renderTblBody(id, rows);
+  tblData[id] = rows;
+  if (id === 'tSessions') { renderSessionsBody(); } else { renderTblBody(id, rows); }
   document.querySelectorAll('#'+id+' th').forEach((th,ci) => {
     th.classList.remove('sort-asc','sort-desc');
     if (ci===col) th.classList.add(st.asc?'sort-asc':'sort-desc');
@@ -777,21 +803,45 @@ function updateModelTable(sessions) {
 
 function updateSessionsTable(sessions) {
   const sorted = [...sessions].sort((a,b) => b.datetime.localeCompare(a.datetime));
-  const i      = I18N[lang];
-  const label  = document.getElementById('sessions-count-label');
-  label.textContent = sessions.length > 20
-    ? i.showing_n_of.replace('%n%', 20).replace('%total%', sessions.length)
-    : i.n_sessions.replace('%n%', sessions.length);
-  const rows = sorted.slice(0,20).map(s => [
-    s.datetime.slice(0,16).replace('T',' '),
+  showAllSessions = false;
+  tblData['tSessions'] = sorted.map(s => [
+    relativeTime(s.datetime),
     s.project,
     s.duration_min.toFixed(0)+' min',
     s.primary_model,
     (s.total_tokens/1000).toFixed(0)+'k',
     '$'+s.estimated_cost.toFixed(4),
+    s.stop_reason || '—',
   ]);
-  tblData['tSessions'] = rows;
+  renderSessionsBody();
+}
+
+function renderSessionsBody() {
+  const all  = tblData['tSessions'] || [];
+  const rows = showAllSessions ? all : all.slice(0, 20);
   renderTblBody('tSessions', rows);
+
+  const wrap = document.getElementById('sessions-table-wrap');
+  wrap.style.maxHeight = (showAllSessions && all.length > 20) ? '440px' : '';
+  wrap.style.overflowY = (showAllSessions && all.length > 20) ? 'auto'  : '';
+
+  const i     = I18N[lang];
+  const label = document.getElementById('sessions-count-label');
+  label.textContent = (!showAllSessions && all.length > 20)
+    ? i.showing_n_of.replace('%n%', 20).replace('%total%', all.length)
+    : i.n_sessions.replace('%n%', all.length);
+
+  const btn = document.getElementById('btn-show-all');
+  if (all.length <= 20) { btn.style.display = 'none'; return; }
+  btn.style.display = '';
+  btn.textContent = showAllSessions
+    ? i.show_less
+    : i.show_all.replace('%n%', all.length);
+}
+
+function toggleAllSessions() {
+  showAllSessions = !showAllSessions;
+  renderSessionsBody();
 }
 
 // ── Tips ──────────────────────────────────────────────────────────────────────
