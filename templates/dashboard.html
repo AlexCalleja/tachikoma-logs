@@ -141,8 +141,34 @@
     .tables-section   { animation:fadeUp .35s ease both; animation-delay:.31s }
     .claude-section   { animation:fadeUp .35s ease both; animation-delay:.37s }
 
-    @media(max-width:900px) { .stats{grid-template-columns:repeat(3,1fr)} .grid{grid-template-columns:1fr} }
-    @media(max-width:600px) { .stats{grid-template-columns:1fr 1fr} body{padding:1rem} .filters{flex-direction:column;align-items:flex-start} .toggle-group{margin-left:0} }
+    /* ── Responsive grid ── */
+    .grid-3 { grid-template-columns:1fr 1fr 1fr }
+    .claude-btns { display:flex; flex-direction:column; gap:.4rem; align-items:flex-end; flex-shrink:0 }
+
+    @media(max-width:900px) {
+      .stats  { grid-template-columns:repeat(3,1fr) }
+      .grid   { grid-template-columns:1fr }
+      .grid-3 { grid-template-columns:1fr 1fr }
+    }
+    @media(max-width:600px) {
+      body    { padding:1rem }
+      .stats  { grid-template-columns:1fr 1fr }
+      .stat .val { font-size:1.2rem }
+      .grid, .grid-3 { grid-template-columns:1fr }
+      .filters { flex-direction:column; align-items:flex-start }
+      .toggle-group { margin-left:0 }
+      #date-range-label { display:none }
+      .claude-card { flex-direction:column; align-items:stretch; gap:.75rem }
+      .claude-btns { flex-direction:row; justify-content:flex-end; align-items:center }
+      .card { padding:.9rem }
+      .data-table { min-width:460px }
+      #sessions-table-wrap { overflow-x:auto }
+    }
+    @media(max-width:400px) {
+      .stats { grid-template-columns:1fr }
+      .stat .val { font-size:1.1rem }
+      body { padding:.75rem }
+    }
   </style>
 </head>
 <body>
@@ -185,7 +211,7 @@
     <div class="card full"><h2 data-i18n="chart_dur"></h2><canvas id="cDur"></canvas></div>
   </div>
 
-  <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+  <div class="grid grid-3">
     <div class="card"><h2 data-i18n="chart_entrypoint"></h2><canvas id="cEntrypoint"></canvas></div>
     <div class="card"><h2 data-i18n="chart_perm"></h2><canvas id="cPerm"></canvas></div>
     <div class="card"><h2 data-i18n="chart_stopreason"></h2><canvas id="cStopReason"></canvas></div>
@@ -240,7 +266,7 @@
       <div class="claude-desc">
         <strong data-i18n="claude_desc_strong"></strong> <span data-i18n="claude_desc"></span>
       </div>
-      <div style="display:flex;flex-direction:column;gap:.4rem;align-items:flex-end;flex-shrink:0">
+      <div class="claude-btns">
         <button class="btn-copy" id="btn-copy" onclick="copyClaudePrompt()"></button>
         <button class="filter-btn" id="btn-preview" onclick="togglePromptPreview()"></button>
       </div>
