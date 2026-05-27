@@ -244,9 +244,7 @@
   </div>
 
 <script>
-const ALL_SESSIONS  = __SESSIONS_JSON__;
-const TIPS          = __TIPS_JSON__;
-const CLAUDE_PROMPT = { es: __CLAUDE_PROMPT_ES__, en: __CLAUDE_PROMPT_EN__ };
+const ALL_SESSIONS = __SESSIONS_JSON__;
 
 const MODEL_COLORS = { sonnet:'#4f9eff', opus:'#a78bfa', haiku:'#34d399', mixed:'#fb923c' };
 const PALETTE = ['#4f9eff','#34d399','#fb923c','#a78bfa','#ff5c73','#6ab0ff','#e3b341','#c084fc','#fda4af','#4ade80'];
@@ -431,8 +429,8 @@ function setLang(l) {
   updateChartLabels();
   const container = document.getElementById('tips-container');
   container.replaceChildren();
-  renderTips();
   const _lf = filterSessions();
+  renderTips(_lf);
   updateSessionsTable(_lf);
   renderHeatmap(_lf);
 }
@@ -844,17 +842,236 @@ function toggleAllSessions() {
   renderSessionsBody();
 }
 
-// ── Tips ──────────────────────────────────────────────────────────────────────
-function renderTips() {
+// ── Tips — compute + render ───────────────────────────────────────────────────
+function median(arr) {
+  if (!arr.length) return 0;
+  const s = [...arr].sort((a,b) => a-b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2;
+}
+
+function computeTips(sessions) {
+  if (!sessions.length) return [];
+  const tips             = [];
+  const totalCost        = sessions.reduce((a,s) => a + s.estimated_cost, 0);
+  const totalCacheRead   = sessions.reduce((a,s) => a + s.cache_read, 0);
+  const totalCacheCreate = sessions.reduce((a,s) => a + s.cache_create, 0);
+  const totalInput       = sessions.reduce((a,s) => a + s.input_tokens, 0);
+  const totalOutput      = sessions.reduce((a,s) => a + s.output_tokens, 0);
+
+  // 1. Cache hit rate
+  const cacheable = totalInput + totalCacheRead + totalCacheCreate;
+  const cacheRate = cacheable > 0 ? totalCacheRead / cacheable : 0;
+  const cachePct  = Math.round(cacheRate * 100);
+  if (cacheRate < 0.15) {
+    tips.push({ level:'warn',
+      title_es:'Baja tasa de cache',
+      body_es:`Solo el ${cachePct}% de los tokens de entrada viene de cache. Sesiones mas largas y reusar contexto entre mensajes mejora esto.`,
+      title_en:'Low cache hit rate',
+      body_en:`Only ${cachePct}% of input tokens come from cache. Longer sessions and reusing context between messages improves this.`,
+    });
+  } else if (cacheRate >= 0.40) {
+    tips.push({ level:'ok',
+      title_es:'Buena tasa de cache',
+      body_es:`${cachePct}% de tokens viene de cache -- buen uso del contexto de sesion.`,
+      title_en:'Good cache hit rate',
+      body_en:`${cachePct}% of tokens come from cache — good use of session context.`,
+    });
+  }
+
+  // 2. Opus proportion
+  const opusSess    = sessions.filter(s => s.primary_model==='opus' || s.primary_model==='mixed');
+  const opusPct     = Math.round(opusSess.length / sessions.length * 100);
+  const opusCost    = opusSess.reduce((a,s) => a + s.estimated_cost, 0);
+  const opusCostPct = Math.round(totalCost > 0 ? opusCost / totalCost * 100 : 0);
+  if (opusPct > 35) {
+    tips.push({ level:'warn',
+      title_es:'Alto uso de Opus',
+      body_es:`${opusPct}% de sesiones usan Opus (${opusCostPct}% del costo). Opus es ideal para planning y debugging complejo -- revisa si todas las sesiones lo justifican.`,
+      title_en:'High Opus usage',
+      body_en:`${opusPct}% of sessions use Opus (${opusCostPct}% of cost). Opus is ideal for planning and complex debugging — review whether all sessions justify it.`,
+    });
+  }
+
+  // 3. Short sessions
+  const short    = sessions.filter(s => s.duration_min < 3);
+  const shortPct = Math.round(short.length / sessions.length * 100);
+  if (shortPct > 30) {
+    tips.push({ level:'info',
+      title_es:'Muchas sesiones muy cortas',
+      body_es:`${shortPct}% de sesiones duran menos de 3 min. Cada sesion paga el costo de contexto inicial -- considera consolidar tareas cortas.`,
+      title_en:'Many very short sessions',
+      body_en:`${shortPct}% of sessions last under 3 min. Each session pays the initial context cost — consider consolidating short tasks.`,
+    });
+  }
+
+  // 4. Long sessions
+  const longSess = sessions.filter(s => s.duration_min > 120);
+  if (longSess.length >= 3) {
+    const avgCost = longSess.reduce((a,s) => a + s.estimated_cost, 0) / longSess.length;
+    tips.push({ level:'info',
+      title_es:'Sesiones muy largas',
+      body_es:`${longSess.length} sesiones superan 2 h (costo promedio $${avgCost.toFixed(2)}). Claude pierde efectividad en contextos muy largos -- considera /compact o dividir en sesiones.`,
+      title_en:'Very long sessions',
+      body_en:`${longSess.length} sessions exceed 2 h (avg cost $${avgCost.toFixed(2)}). Claude loses effectiveness in very long contexts — consider /compact or splitting into sessions.`,
+    });
+  }
+
+  // 5. Project cost concentration
+  const byProjCost = {};
+  for (const s of sessions) { byProjCost[s.project] = (byProjCost[s.project]||0) + s.estimated_cost; }
+  const projEntries = Object.entries(byProjCost);
+  if (projEntries.length > 2) {
+    const [topProj, topCost] = projEntries.sort((a,b) => b[1]-a[1])[0];
+    const topPct = Math.round(totalCost > 0 ? topCost / totalCost * 100 : 0);
+    if (topPct > 60) {
+      tips.push({ level:'info',
+        title_es:'Costo concentrado en un proyecto',
+        body_es:`'${topProj}' representa el ${topPct}% del costo total ($${topCost.toFixed(2)}). Puede ser intencional, pero vale revisarlo si el proyecto ya esta estable.`,
+        title_en:'Cost concentrated in one project',
+        body_en:`'${topProj}' accounts for ${topPct}% of total cost ($${topCost.toFixed(2)}). May be intentional, but worth reviewing if the project is already stable.`,
+      });
+    }
+  }
+
+  // 6. High output:input ratio
+  if (totalInput > 0) {
+    const ratio = totalOutput / totalInput;
+    if (ratio > 0.8) {
+      tips.push({ level:'info',
+        title_es:'Relacion output/input alta',
+        body_es:`Output es el ${Math.round(ratio*100)}% del input. El output es 5-25x mas caro que el input -- prompts mas precisos reducen los tokens generados.`,
+        title_en:'High output/input ratio',
+        body_en:`Output is ${Math.round(ratio*100)}% of input. Output costs 5-25x more than input — more precise prompts reduce generated tokens.`,
+      });
+    }
+  }
+
+  // 7. Median session duration
+  const med = median(sessions.map(s => s.duration_min));
+  if (med >= 20) {
+    tips.push({ level:'ok',
+      title_es:'Sesiones de buena duracion',
+      body_es:`Duracion mediana de ${Math.round(med)} min -- sesiones bien aprovechadas.`,
+      title_en:'Good session duration',
+      body_en:`Median duration of ${Math.round(med)} min — sessions are well-utilized.`,
+    });
+  }
+
+  // 8. max_tokens rate
+  const maxTokPct = sessions.filter(s => s.stop_reason==='max_tokens').length / sessions.length;
+  if (maxTokPct > 0.05) {
+    tips.push({ level:'warn',
+      title_es:'Sesiones que alcanzan el limite de contexto',
+      body_es:`${Math.round(maxTokPct*100)}% de sesiones alcanzan el limite de tokens. Usa /compact antes de que el contexto se llene o divide en sesiones mas cortas.`,
+      title_en:'Sessions hitting context limit',
+      body_en:`${Math.round(maxTokPct*100)}% of sessions hit the token limit. Use /compact before context fills up or split into shorter sessions.`,
+    });
+  }
+
+  return tips;
+}
+
+function buildClaudePrompt(sessions, tips, l) {
+  if (!sessions.length) return '';
+  const sorted = [...sessions].sort((a,b) => a.datetime.localeCompare(b.datetime));
+  const totalTokens      = sessions.reduce((a,s) => a + s.total_tokens, 0);
+  const totalCost        = sessions.reduce((a,s) => a + s.estimated_cost, 0);
+  const totalInput       = sessions.reduce((a,s) => a + s.input_tokens, 0);
+  const totalOutput      = sessions.reduce((a,s) => a + s.output_tokens, 0);
+  const totalCacheRead   = sessions.reduce((a,s) => a + s.cache_read, 0);
+  const totalCacheCreate = sessions.reduce((a,s) => a + s.cache_create, 0);
+  const medDur           = median(sessions.map(s => s.duration_min));
+  const cacheable        = totalInput + totalCacheRead + totalCacheCreate;
+  const cacheRate        = cacheable > 0 ? totalCacheRead / cacheable : 0;
+
+  const byProj = {};
+  for (const s of sessions) {
+    if (!byProj[s.project]) byProj[s.project] = {tokens:0,cost:0,sessions:0};
+    byProj[s.project].tokens   += s.total_tokens;
+    byProj[s.project].cost     += s.estimated_cost;
+    byProj[s.project].sessions += 1;
+  }
+  const top5 = Object.entries(byProj).sort((a,b) => b[1].cost-a[1].cost).slice(0,5);
+
+  const modelCount = {};
+  for (const s of sessions) { modelCount[s.primary_model] = (modelCount[s.primary_model]||0)+1; }
+
+  const sw         = l === 'en' ? 'sessions' : 'sesiones';
+  const tipLines   = tips.map(t=>`- [${t.level.toUpperCase()}] ${t['title_'+l]}: ${t['body_'+l]}`).join('\n');
+  const projLines  = top5.map(([n,d])=>`  - ${n}: ${d.sessions} ${sw}, ${d.tokens.toLocaleString()} tokens, $${d.cost.toFixed(2)}`).join('\n');
+  const modelLines = Object.entries(modelCount).sort().map(([m,c])=>`  - ${m}: ${c} ${sw}`).join('\n');
+
+  const firstDate = sorted[0].date;
+  const lastDate  = sorted[sorted.length-1].date;
+
+  if (l === 'en') return `Here are my Claude Code usage metrics. Analyze them and give me concrete recommendations to improve my workflow, reduce costs, and improve session quality.
+
+## General summary
+- Period: ${firstDate} -> ${lastDate}
+- Total sessions: ${sessions.length}
+- Active projects: ${Object.keys(byProj).length}
+- Total tokens: ${totalTokens.toLocaleString()} (input: ${totalInput.toLocaleString()}, output: ${totalOutput.toLocaleString()})
+- Estimated cost: $${totalCost.toFixed(2)} USD
+- Median session duration: ${Math.round(medDur)} min
+- Cache rate: ${Math.round(cacheRate*100)}% (read: ${totalCacheRead.toLocaleString()}, create: ${totalCacheCreate.toLocaleString()})
+
+## Distribution by project (top 5)
+${projLines}
+
+## Distribution by model
+${modelLines}
+
+## Automatically detected tips
+${tipLines || '  (none)'}
+
+## Questions I'd like to answer
+1. What patterns suggest inefficient usage?
+2. How could I improve the cache rate?
+3. Does the Sonnet/Opus balance make sense for the type of work I do?
+4. What should I change in my longer sessions?
+5. Are there any warning signs I'm not capturing with the automatic rules?`.trim();
+
+  return `Aqui estan mis metricas de uso de Claude Code. Analizalas y dame recomendaciones concretas para mejorar mi flujo de trabajo, reducir costos y mejorar la calidad de mis sesiones.
+
+## Resumen general
+- Periodo: ${firstDate} -> ${lastDate}
+- Sesiones totales: ${sessions.length}
+- Proyectos activos: ${Object.keys(byProj).length}
+- Tokens totales: ${totalTokens.toLocaleString()} (input: ${totalInput.toLocaleString()}, output: ${totalOutput.toLocaleString()})
+- Costo estimado: $${totalCost.toFixed(2)} USD
+- Duracion mediana de sesion: ${Math.round(medDur)} min
+- Tasa de cache: ${Math.round(cacheRate*100)}% (read: ${totalCacheRead.toLocaleString()}, create: ${totalCacheCreate.toLocaleString()})
+
+## Distribucion por proyecto (top 5)
+${projLines}
+
+## Distribucion por modelo
+${modelLines}
+
+## Tips automaticos detectados
+${tipLines || '  (ninguno)'}
+
+## Preguntas que me gustaria responder
+1. Que patrones ves que sugieran uso ineficiente?
+2. Como podria mejorar la tasa de cache?
+3. El balance Sonnet/Opus tiene sentido para el tipo de trabajo que hago?
+4. Que deberia cambiar en mis sesiones mas largas?
+5. Hay alguna senal de alerta que no este captando con las reglas automaticas?`.trim();
+}
+
+function renderTips(sessions) {
   const container = document.getElementById('tips-container');
-  if (!TIPS.length) {
+  container.replaceChildren();
+  const tips = computeTips(sessions);
+  if (!tips.length) {
     const p = document.createElement('p');
     p.style.cssText = 'font-size:.75rem;color:var(--muted)';
     p.textContent = I18N[lang].no_tips;
     container.appendChild(p);
     return;
   }
-  for (const t of TIPS) {
+  for (const t of tips) {
     const wrap  = document.createElement('div');
     wrap.className = 'tip ' + t.level;
     const icon  = document.createElement('div');
@@ -862,7 +1079,7 @@ function renderTips() {
     icon.textContent = t.level === 'warn' ? '▲' : t.level === 'ok' ? '●' : '◆';
     const body  = document.createElement('div');
     const title = document.createElement('div');
-    title.className  = 'tip-title';
+    title.className   = 'tip-title';
     title.textContent = t['title_' + lang];
     const desc  = document.createElement('div');
     desc.className   = 'tip-body';
@@ -945,6 +1162,7 @@ function applyFilters() {
   updateModelTable(f);
   updateSessionsTable(f);
   renderHeatmap(f);
+  renderTips(f);
 }
 
 // ── Claude prompt copy ────────────────────────────────────────────────────────
@@ -953,12 +1171,14 @@ function copyClaudePrompt() {
   const i     = I18N[lang];
   const reset = () => { btn.textContent = i.btn_copy; btn.classList.remove('copied'); };
   const done  = () => { btn.textContent = i.btn_copied; btn.classList.add('copied'); setTimeout(reset, 2500); };
+  const f    = filterSessions();
+  const text = buildClaudePrompt(f, computeTips(f), lang);
   if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(CLAUDE_PROMPT[lang]).then(done).catch(fallback);
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
   } else { fallback(); }
   function fallback() {
     const ta = document.createElement('textarea');
-    ta.value = CLAUDE_PROMPT[lang];
+    ta.value = text;
     ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
     document.body.appendChild(ta);
     ta.focus(); ta.select();
@@ -980,7 +1200,7 @@ initCharts(initial);
 updateKPIs(initial);
 updateModelTable(initial);
 updateSessionsTable(initial);
-renderTips();
+renderTips(initial);
 renderHeatmap(initial);
 applyLang();
 </script>

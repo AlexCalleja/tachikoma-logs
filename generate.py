@@ -15,7 +15,6 @@ from pathlib import Path
 
 from html_builder import generate_html
 from log_parser import parse_sessions
-from tips import compute_tips
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="tachikoma-logs — generate Claude Code usage dashboard")
@@ -30,8 +29,5 @@ if __name__ == "__main__":
         print("No sessions found.")
         raise SystemExit(1)
 
-    tips = compute_tips(sessions)
-    print(f"Tips: {len(tips)} generated")
-
-    generate_html(sessions, tips, output_path)
+    generate_html(sessions, output_path)
     print(f"Done: {output_path.resolve()}")
