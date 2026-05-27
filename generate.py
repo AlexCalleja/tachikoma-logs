@@ -5,8 +5,8 @@ Usage:
     python generate.py [--output docs/usage.html]
 
 Outputs a self-contained HTML file with:
-  - 4 Chart.js charts (dark theme, no pip required)
-  - Rule-based usage tips
+  - 8 Chart.js charts + activity heatmap (dark/light theme, no pip required)
+  - Rule-based usage tips and Claude prompt computed reactively in the browser
   - "Copy prompt for Claude" button for deeper AI analysis
 """
 

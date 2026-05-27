@@ -462,14 +462,14 @@ function setLang(l) {
   localStorage.setItem('lang', l);
   document.documentElement.lang = l;
   document.getElementById('btn-lang').textContent = l === 'es' ? 'EN' : 'ES';
+  const _lf   = filterSessions();
+  const _tips = computeTips(_lf);
   applyLang();
-  updateChartLabels();
-  const container = document.getElementById('tips-container');
-  container.replaceChildren();
-  const _lf = filterSessions();
-  renderTips(_lf);
+  updateChartLabels(_lf);
+  renderTips(_lf, _tips);
   updateSessionsTable(_lf);
   renderHeatmap(_lf);
+  _refreshPromptPreview(_lf, _tips);
 }
 
 function toggleLang() { setLang(lang === 'es' ? 'en' : 'es'); }
@@ -482,7 +482,6 @@ function applyLang() {
   });
   document.getElementById('btn-copy').textContent    = i.btn_copy;
   document.getElementById('btn-preview').textContent = showPromptPreview ? i.btn_preview_hide : i.btn_preview;
-  _refreshPromptPreview();
 }
 
 // ── Aggregation helpers ───────────────────────────────────────────────────────
@@ -748,7 +747,7 @@ function updateCharts(sessions) {
   charts.tools.update();
 }
 
-function updateChartLabels() {
+function updateChartLabels(sessions) {
   const i  = I18N[lang];
   const ds = charts.time.data.datasets;
   ds[0].label = i.ds_input;
@@ -758,7 +757,7 @@ function updateChartLabels() {
   ds[4].label = i.ds_cost;
   charts.time.options.scales.y.title.text  = i.axis_tokens;
   charts.time.options.scales.y2.title.text = i.axis_usd;
-  const {dates, map} = aggrByDate(filterSessions());
+  const {dates, map} = aggrByDate(sessions);
   charts.time.options.plugins.tooltip.callbacks.afterBody =
     ctx => ctx[0] ? [i.tooltip_sessions+(map[ctx[0].label]?.sessions??'')] : [];
   charts.time.update();
@@ -1107,18 +1106,18 @@ ${tipLines || '  (ninguno)'}
 5. Hay alguna senal de alerta que no este captando con las reglas automaticas?`.trim();
 }
 
-function renderTips(sessions) {
+function renderTips(sessions, tips) {
   const container = document.getElementById('tips-container');
   container.replaceChildren();
-  const tips = computeTips(sessions);
-  if (!tips.length) {
+  const resolved = tips ?? computeTips(sessions);
+  if (!resolved.length) {
     const p = document.createElement('p');
     p.style.cssText = 'font-size:.75rem;color:var(--muted)';
     p.textContent = I18N[lang].no_tips;
     container.appendChild(p);
     return;
   }
-  for (const t of tips) {
+  for (const t of resolved) {
     const wrap  = document.createElement('div');
     wrap.className = 'tip ' + t.level;
     const icon  = document.createElement('div');
@@ -1203,15 +1202,16 @@ function renderHeatmap(sessions) {
 
 // ── Apply filters ─────────────────────────────────────────────────────────────
 function applyFilters() {
-  const f = filterSessions();
+  const f    = filterSessions();
+  const tips = computeTips(f);
   updateKPIs(f);
   updateCharts(f);
   updateModelTable(f);
   updateSessionsTable(f);
   renderHeatmap(f);
-  renderTips(f);
+  renderTips(f, tips);
   updateDateRangeLabel(f);
-  _refreshPromptPreview();
+  _refreshPromptPreview(f, tips);
 }
 
 // ── Date range label ─────────────────────────────────────────────────────────
@@ -1237,10 +1237,11 @@ function togglePromptPreview() {
   if (showPromptPreview) _refreshPromptPreview();
 }
 
-function _refreshPromptPreview() {
+function _refreshPromptPreview(f, tips) {
   if (!showPromptPreview) return;
-  const f = filterSessions();
-  document.getElementById('prompt-preview-text').textContent = buildClaudePrompt(f, computeTips(f), lang);
+  const sessions = f    ?? filterSessions();
+  const t        = tips ?? computeTips(sessions);
+  document.getElementById('prompt-preview-text').textContent = buildClaudePrompt(sessions, t, lang);
 }
 
 // ── Claude prompt copy ────────────────────────────────────────────────────────
