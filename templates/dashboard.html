@@ -139,6 +139,13 @@
     <div class="card full"><h2 data-i18n="chart_dur"></h2><canvas id="cDur"></canvas></div>
   </div>
 
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="card"><h2 data-i18n="chart_entrypoint"></h2><canvas id="cEntrypoint"></canvas></div>
+    <div class="card"><h2 data-i18n="chart_perm"></h2><canvas id="cPerm"></canvas></div>
+    <div class="card"><h2 data-i18n="chart_stopreason"></h2><canvas id="cStopReason"></canvas></div>
+    <div class="card full"><h2 data-i18n="chart_tools"></h2><canvas id="cTools" style="max-height:320px"></canvas></div>
+  </div>
+
   <div class="tips-section">
     <div class="section-title" data-i18n="tips_title"></div>
     <div id="tips-container"></div>
@@ -213,6 +220,10 @@ const I18N = {
     chart_proj:         'Top proyectos (tokens)',
     chart_model:        'Modelo primario por sesion',
     chart_dur:          'Distribucion de duracion de sesiones',
+    chart_entrypoint:   'Entrypoint por sesion',
+    chart_perm:         'Modo de permisos',
+    chart_stopreason:   'Razon de fin de sesion',
+    chart_tools:        'Top 10 herramientas (llamadas totales)',
     axis_tokens:        'Tokens',
     axis_usd:           'USD',
     ds_input:           'Input',
@@ -262,6 +273,10 @@ const I18N = {
     chart_proj:         'Top projects (tokens)',
     chart_model:        'Primary model per session',
     chart_dur:          'Session duration distribution',
+    chart_entrypoint:   'Entrypoint by session',
+    chart_perm:         'Permission mode',
+    chart_stopreason:   'Session end reason',
+    chart_tools:        'Top 10 tools (total calls)',
     axis_tokens:        'Tokens',
     axis_usd:           'USD',
     ds_input:           'Input',
@@ -424,6 +439,25 @@ function aggrDuration(sessions) {
   return counts;
 }
 
+function aggrByField(sessions, field) {
+  const map = {};
+  for (const s of sessions) {
+    const v = s[field] || 'unknown';
+    map[v] = (map[v] || 0) + 1;
+  }
+  return map;
+}
+
+function aggrTools(sessions) {
+  const map = {};
+  for (const s of sessions) {
+    for (const [tool, count] of Object.entries(s.tools || {})) {
+      map[tool] = (map[tool] || 0) + count;
+    }
+  }
+  return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 10);
+}
+
 // ── KPIs ──────────────────────────────────────────────────────────────────────
 function updateKPIs(sessions) {
   if (!sessions.length) {
@@ -509,6 +543,48 @@ function initCharts(sessions) {
     data:{labels:DUR_LABELS,datasets:[{label:i.kpi_sessions,data:dur,backgroundColor:'rgba(63,185,80,.45)',borderColor:'#3fb950',borderWidth:1,borderRadius:3}]},
     options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:GRID,ticks:TICKS},y:{grid:GRID,ticks:TICKS}}},
   });
+
+  const entryMap   = aggrByField(sessions, 'entrypoint');
+  const permMap    = aggrByField(sessions, 'permission_mode');
+  const stopMap    = aggrByField(sessions, 'stop_reason');
+  const toolsTop10 = aggrTools(sessions);
+
+  const doughnutOpts = (pos) => ({
+    responsive:true,
+    plugins:{legend:{position:pos,labels:{font:{size:11},boxWidth:12}}},
+  });
+
+  charts.entrypoint = new Chart(document.getElementById('cEntrypoint'), {
+    type:'doughnut',
+    data:{labels:Object.keys(entryMap),datasets:[{data:Object.values(entryMap),backgroundColor:PALETTE,borderWidth:0}]},
+    options:doughnutOpts('right'),
+  });
+
+  charts.perm = new Chart(document.getElementById('cPerm'), {
+    type:'doughnut',
+    data:{labels:Object.keys(permMap),datasets:[{data:Object.values(permMap),backgroundColor:PALETTE.slice(3),borderWidth:0}]},
+    options:doughnutOpts('right'),
+  });
+
+  charts.stopreason = new Chart(document.getElementById('cStopReason'), {
+    type:'doughnut',
+    data:{labels:Object.keys(stopMap),datasets:[{data:Object.values(stopMap),backgroundColor:['#3fb950','#f85149','#e3b341','#bc8cff'],borderWidth:0}]},
+    options:doughnutOpts('right'),
+  });
+
+  charts.tools = new Chart(document.getElementById('cTools'), {
+    type:'bar',
+    data:{
+      labels:toolsTop10.map(e=>e[0]),
+      datasets:[{data:toolsTop10.map(e=>e[1]),backgroundColor:'rgba(88,166,255,.5)',borderColor:'#58a6ff',borderWidth:1,borderRadius:3}],
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      plugins:{legend:{display:false}},
+      scales:{x:{grid:GRID,ticks:TICKS},y:{grid:{display:false},ticks:{...TICKS,font:{size:11}}}},
+    },
+  });
 }
 
 function updateCharts(sessions) {
@@ -541,6 +617,26 @@ function updateCharts(sessions) {
 
   charts.dur.data.datasets[0].data = aggrDuration(sessions);
   charts.dur.update();
+
+  const entryMap = aggrByField(sessions, 'entrypoint');
+  charts.entrypoint.data.labels = Object.keys(entryMap);
+  charts.entrypoint.data.datasets[0].data = Object.values(entryMap);
+  charts.entrypoint.update();
+
+  const permMap = aggrByField(sessions, 'permission_mode');
+  charts.perm.data.labels = Object.keys(permMap);
+  charts.perm.data.datasets[0].data = Object.values(permMap);
+  charts.perm.update();
+
+  const stopMap = aggrByField(sessions, 'stop_reason');
+  charts.stopreason.data.labels = Object.keys(stopMap);
+  charts.stopreason.data.datasets[0].data = Object.values(stopMap);
+  charts.stopreason.update();
+
+  const toolsTop10 = aggrTools(sessions);
+  charts.tools.data.labels = toolsTop10.map(e=>e[0]);
+  charts.tools.data.datasets[0].data = toolsTop10.map(e=>e[1]);
+  charts.tools.update();
 }
 
 function updateChartLabels() {

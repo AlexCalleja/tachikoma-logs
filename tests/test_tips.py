@@ -3,18 +3,22 @@ from tips import compute_tips
 
 def make_session(**kwargs):
     base = {
-        "session_id": "test",
-        "project": "proj",
-        "date": "2026-01-01",
-        "datetime": "2026-01-01T00:00:00",
-        "duration_min": 20.0,
-        "input_tokens": 10_000,
-        "output_tokens": 3_000,
-        "cache_read": 2_000,
-        "cache_create": 0,
-        "total_tokens": 13_000,
-        "primary_model": "sonnet",
-        "estimated_cost": 0.05,
+        "session_id":      "test",
+        "project":         "proj",
+        "date":            "2026-01-01",
+        "datetime":        "2026-01-01T00:00:00",
+        "duration_min":    20.0,
+        "input_tokens":    10_000,
+        "output_tokens":   3_000,
+        "cache_read":      2_000,
+        "cache_create":    0,
+        "total_tokens":    13_000,
+        "primary_model":   "sonnet",
+        "estimated_cost":  0.05,
+        "entrypoint":      "cli",
+        "permission_mode": "default",
+        "stop_reason":     "end_turn",
+        "tools":           {},
     }
     base.update(kwargs)
     return base
@@ -69,3 +73,34 @@ def test_tips_have_english_translations():
     sessions = [make_session(input_tokens=10_000, cache_read=0, cache_create=0)]
     tips = compute_tips(sessions)
     assert all("title_en" in t and "body_en" in t for t in tips)
+
+
+def test_max_tokens_rate_produces_warn():
+    sessions = [
+        make_session(stop_reason="max_tokens"),
+        make_session(stop_reason="max_tokens"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+        make_session(stop_reason="end_turn"),
+    ]
+    assert "Sesiones que alcanzan el limite de contexto" in tip_titles(sessions)
+
+
+def test_low_max_tokens_rate_no_warn():
+    sessions = [make_session(stop_reason="end_turn") for _ in range(20)]
+    assert "Sesiones que alcanzan el limite de contexto" not in tip_titles(sessions)
