@@ -110,6 +110,18 @@
     .model-tag.mixed  { background:rgba(251,146,60,.15);  color:var(--orange) }
     .empty-row { color:var(--muted); font-style:italic }
 
+    /* ── Heatmap ── */
+    .heatmap-wrap { overflow-x:auto }
+    .heatmap-grid { display:grid; grid-template-columns:2.5rem repeat(24,minmax(0,1fr)); gap:3px; min-width:500px }
+    .hm-label { font-family:'JetBrains Mono',monospace; font-size:.55rem; color:var(--muted); display:flex; align-items:center }
+    .hm-hour  { justify-content:center; padding-bottom:3px }
+    .hm-day   { justify-content:flex-end; padding-right:5px }
+    .hm-cell  { aspect-ratio:1; border-radius:2px; cursor:default; transition:transform .1s, opacity .1s }
+    .hm-cell:hover { transform:scale(1.4); z-index:1; position:relative }
+
+    /* ── Sessions table wrap ── */
+    #sessions-table-wrap { overflow-y:auto; transition:max-height .25s ease }
+
     /* ── Claude prompt ── */
     .claude-section { margin-bottom:1.25rem }
     .claude-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.1rem 1.4rem; display:flex; align-items:center; gap:1.1rem }
@@ -129,8 +141,34 @@
     .tables-section   { animation:fadeUp .35s ease both; animation-delay:.31s }
     .claude-section   { animation:fadeUp .35s ease both; animation-delay:.37s }
 
-    @media(max-width:900px) { .stats{grid-template-columns:repeat(3,1fr)} .grid{grid-template-columns:1fr} }
-    @media(max-width:600px) { .stats{grid-template-columns:1fr 1fr} body{padding:1rem} .filters{flex-direction:column;align-items:flex-start} .toggle-group{margin-left:0} }
+    /* ── Responsive grid ── */
+    .grid-3 { grid-template-columns:1fr 1fr 1fr }
+    .claude-btns { display:flex; flex-direction:column; gap:.4rem; align-items:flex-end; flex-shrink:0 }
+
+    @media(max-width:900px) {
+      .stats  { grid-template-columns:repeat(3,1fr) }
+      .grid   { grid-template-columns:1fr }
+      .grid-3 { grid-template-columns:1fr 1fr }
+    }
+    @media(max-width:600px) {
+      body    { padding:1rem }
+      .stats  { grid-template-columns:1fr 1fr }
+      .stat .val { font-size:1.2rem }
+      .grid, .grid-3 { grid-template-columns:1fr }
+      .filters { flex-direction:column; align-items:flex-start }
+      .toggle-group { margin-left:0 }
+      #date-range-label { display:none }
+      .claude-card { flex-direction:column; align-items:stretch; gap:.75rem }
+      .claude-btns { flex-direction:row; justify-content:flex-end; align-items:center }
+      .card { padding:.9rem }
+      .data-table { min-width:460px }
+      #sessions-table-wrap { overflow-x:auto }
+    }
+    @media(max-width:400px) {
+      .stats { grid-template-columns:1fr }
+      .stat .val { font-size:1.1rem }
+      body { padding:.75rem }
+    }
   </style>
 </head>
 <body>
@@ -151,6 +189,7 @@
       <label class="model-check"><input type="checkbox" value="haiku"  checked onchange="toggleModel('haiku')">  Haiku</label>
       <label class="model-check"><input type="checkbox" value="mixed"  checked onchange="toggleModel('mixed')">  Mixed</label>
     </div>
+    <span id="date-range-label" style="font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-left:.25rem"></span>
     <div class="toggle-group">
       <button class="filter-btn" id="btn-lang"  onclick="toggleLang()">EN</button>
       <button class="filter-btn" id="btn-theme" onclick="toggleTheme()">☀</button>
@@ -172,11 +211,12 @@
     <div class="card full"><h2 data-i18n="chart_dur"></h2><canvas id="cDur"></canvas></div>
   </div>
 
-  <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+  <div class="grid grid-3">
     <div class="card"><h2 data-i18n="chart_entrypoint"></h2><canvas id="cEntrypoint"></canvas></div>
     <div class="card"><h2 data-i18n="chart_perm"></h2><canvas id="cPerm"></canvas></div>
     <div class="card"><h2 data-i18n="chart_stopreason"></h2><canvas id="cStopReason"></canvas></div>
     <div class="card full"><h2 data-i18n="chart_tools"></h2><canvas id="cTools" style="max-height:320px"></canvas></div>
+    <div class="card full"><h2 data-i18n="chart_heatmap"></h2><div id="heatmap-container"></div></div>
   </div>
 
   <div class="tips-section">
@@ -202,17 +242,21 @@
     </div>
     <div class="card">
       <h2><span data-i18n="tbl_sessions_title"></span> <span id="sessions-count-label" style="font-weight:400;text-transform:none;font-size:.6rem;color:var(--muted)"></span></h2>
-      <table class="data-table" id="tSessions">
-        <thead><tr>
-          <th onclick="sortTbl('tSessions',0)" data-i18n="th_date"></th>
-          <th onclick="sortTbl('tSessions',1)" data-i18n="th_project"></th>
-          <th onclick="sortTbl('tSessions',2)" data-i18n="th_dur"></th>
-          <th onclick="sortTbl('tSessions',3)" data-i18n="th_model_col"></th>
-          <th onclick="sortTbl('tSessions',4)" data-i18n="th_tokens"></th>
-          <th onclick="sortTbl('tSessions',5)" data-i18n="th_cost"></th>
-        </tr></thead>
-        <tbody id="tSessions-body"></tbody>
-      </table>
+      <div id="sessions-table-wrap">
+        <table class="data-table" id="tSessions">
+          <thead><tr>
+            <th onclick="sortTbl('tSessions',0)" data-i18n="th_date"></th>
+            <th onclick="sortTbl('tSessions',1)" data-i18n="th_project"></th>
+            <th onclick="sortTbl('tSessions',2)" data-i18n="th_dur"></th>
+            <th onclick="sortTbl('tSessions',3)" data-i18n="th_model_col"></th>
+            <th onclick="sortTbl('tSessions',4)" data-i18n="th_tokens"></th>
+            <th onclick="sortTbl('tSessions',5)" data-i18n="th_cost"></th>
+            <th onclick="sortTbl('tSessions',6)" data-i18n="th_stop_reason"></th>
+          </tr></thead>
+          <tbody id="tSessions-body"></tbody>
+        </table>
+      </div>
+      <button id="btn-show-all" class="filter-btn" style="margin-top:.75rem;display:none" onclick="toggleAllSessions()"></button>
     </div>
   </div>
 
@@ -222,14 +266,18 @@
       <div class="claude-desc">
         <strong data-i18n="claude_desc_strong"></strong> <span data-i18n="claude_desc"></span>
       </div>
-      <button class="btn-copy" id="btn-copy" onclick="copyClaudePrompt()"></button>
+      <div class="claude-btns">
+        <button class="btn-copy" id="btn-copy" onclick="copyClaudePrompt()"></button>
+        <button class="filter-btn" id="btn-preview" onclick="togglePromptPreview()"></button>
+      </div>
+    </div>
+    <div id="prompt-preview" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin-top:.6rem;overflow-x:auto">
+      <pre id="prompt-preview-text" style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:var(--muted);line-height:1.65;white-space:pre-wrap;word-break:break-word;margin:0"></pre>
     </div>
   </div>
 
 <script>
-const ALL_SESSIONS  = __SESSIONS_JSON__;
-const TIPS          = __TIPS_JSON__;
-const CLAUDE_PROMPT = { es: __CLAUDE_PROMPT_ES__, en: __CLAUDE_PROMPT_EN__ };
+const ALL_SESSIONS = __SESSIONS_JSON__;
 
 const MODEL_COLORS = { sonnet:'#4f9eff', opus:'#a78bfa', haiku:'#34d399', mixed:'#fb923c' };
 const PALETTE = ['#4f9eff','#34d399','#fb923c','#a78bfa','#ff5c73','#6ab0ff','#e3b341','#c084fc','#fda4af','#4ade80'];
@@ -257,6 +305,8 @@ const I18N = {
     chart_perm:         'Modo de permisos',
     chart_stopreason:   'Razon de fin de sesion',
     chart_tools:        'Top 10 herramientas (llamadas totales)',
+    chart_heatmap:      'Actividad por hora y día de semana',
+    days:               ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'],
     axis_tokens:        'Tokens',
     axis_usd:           'USD',
     ds_input:           'Input',
@@ -280,8 +330,11 @@ const I18N = {
     th_model_col:       'Modelo',
     th_tokens:          'Tokens',
     th_cost:            'Costo',
+    th_stop_reason:     'Stop reason',
     showing_n_of:       'mostrando %n% de %total%',
     n_sessions:         '%n% sesiones',
+    show_all:           'Ver todas (%n% sesiones)',
+    show_less:          'Ver menos',
     tips_title:         'Consejos de uso',
     no_tips:            'Sin alertas — todo se ve bien.',
     no_data:            'Sin datos para el filtro seleccionado.',
@@ -290,6 +343,8 @@ const I18N = {
     claude_desc:        'con todas tus metricas y pegalo en Claude para obtener analisis mas profundo, recomendaciones personalizadas y patrones que las reglas automaticas no capturan.',
     btn_copy:           'Copiar prompt para Claude',
     btn_copied:         '¡Copiado!',
+    btn_preview:        'Ver prompt',
+    btn_preview_hide:   'Ocultar',
   },
   en: {
     meta_generated:     'generated',
@@ -310,6 +365,8 @@ const I18N = {
     chart_perm:         'Permission mode',
     chart_stopreason:   'Session end reason',
     chart_tools:        'Top 10 tools (total calls)',
+    chart_heatmap:      'Activity by hour and day of week',
+    days:               ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
     axis_tokens:        'Tokens',
     axis_usd:           'USD',
     ds_input:           'Input',
@@ -333,8 +390,11 @@ const I18N = {
     th_model_col:       'Model',
     th_tokens:          'Tokens',
     th_cost:            'Cost',
+    th_stop_reason:     'Stop reason',
     showing_n_of:       'showing %n% of %total%',
     n_sessions:         '%n% sessions',
+    show_all:           'Show all (%n% sessions)',
+    show_less:          'Show less',
     tips_title:         'Usage tips',
     no_tips:            'No alerts — everything looks good.',
     no_data:            'No data for the selected filter.',
@@ -343,6 +403,8 @@ const I18N = {
     claude_desc:        "with all your metrics and paste it into Claude for deeper analysis, personalized recommendations, and patterns that automatic rules don't capture.",
     btn_copy:           'Copy prompt for Claude',
     btn_copied:         'Copied!',
+    btn_preview:        'Preview prompt',
+    btn_preview_hide:   'Hide',
   },
 };
 
@@ -387,7 +449,9 @@ function setTheme(t) {
   Chart.defaults.borderColor = isDark ? 'rgba(79,158,255,.15)' : 'rgba(21,101,192,.15)';
   document.getElementById('btn-theme').textContent = isDark ? '☀' : '☾';
   Object.values(charts).forEach(c => c.destroy());
-  initCharts(filterSessions());
+  const _tf = filterSessions();
+  initCharts(_tf);
+  renderHeatmap(_tf);
 }
 
 function toggleTheme() { setTheme(theme === 'dark' ? 'light' : 'dark'); }
@@ -398,12 +462,14 @@ function setLang(l) {
   localStorage.setItem('lang', l);
   document.documentElement.lang = l;
   document.getElementById('btn-lang').textContent = l === 'es' ? 'EN' : 'ES';
+  const _lf   = filterSessions();
+  const _tips = computeTips(_lf);
   applyLang();
-  updateChartLabels();
-  const container = document.getElementById('tips-container');
-  container.replaceChildren();
-  renderTips();
-  updateSessionsTable(filterSessions());
+  updateChartLabels(_lf);
+  renderTips(_lf, _tips);
+  updateSessionsTable(_lf);
+  renderHeatmap(_lf);
+  _refreshPromptPreview(_lf, _tips);
 }
 
 function toggleLang() { setLang(lang === 'es' ? 'en' : 'es'); }
@@ -414,7 +480,8 @@ function applyLang() {
     const key = el.dataset.i18n;
     if (key in i) el.textContent = i[key];
   });
-  document.getElementById('btn-copy').textContent = i.btn_copy;
+  document.getElementById('btn-copy').textContent    = i.btn_copy;
+  document.getElementById('btn-preview').textContent = showPromptPreview ? i.btn_preview_hide : i.btn_preview;
 }
 
 // ── Aggregation helpers ───────────────────────────────────────────────────────
@@ -584,7 +651,15 @@ function initCharts(sessions) {
 
   const doughnutOpts = (pos) => ({
     responsive:true,
-    plugins:{legend:{position:pos,labels:{font:{size:11},boxWidth:12}}},
+    plugins:{legend:{position:pos,labels:{font:{size:11},boxWidth:12,
+      generateLabels: (chart) => {
+        const base = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+        return base.map((item,i) => ({
+          ...item,
+          text: `${chart.data.labels[i]} (${chart.data.datasets[0].data[i]})`,
+        }));
+      },
+    }}},
   });
 
   charts.entrypoint = new Chart(document.getElementById('cEntrypoint'), {
@@ -672,7 +747,7 @@ function updateCharts(sessions) {
   charts.tools.update();
 }
 
-function updateChartLabels() {
+function updateChartLabels(sessions) {
   const i  = I18N[lang];
   const ds = charts.time.data.datasets;
   ds[0].label = i.ds_input;
@@ -682,7 +757,7 @@ function updateChartLabels() {
   ds[4].label = i.ds_cost;
   charts.time.options.scales.y.title.text  = i.axis_tokens;
   charts.time.options.scales.y2.title.text = i.axis_usd;
-  const {dates, map} = aggrByDate(filterSessions());
+  const {dates, map} = aggrByDate(sessions);
   charts.time.options.plugins.tooltip.callbacks.afterBody =
     ctx => ctx[0] ? [i.tooltip_sessions+(map[ctx[0].label]?.sessions??'')] : [];
   charts.time.update();
@@ -693,6 +768,18 @@ function updateChartLabels() {
 // ── Tables ────────────────────────────────────────────────────────────────────
 const tblData = {};
 const sortSt  = {};
+let showAllSessions = false;
+
+function relativeTime(isoStr) {
+  const mins = Math.floor((Date.now() - new Date(isoStr).getTime()) / 60000);
+  if (mins < 2)  return lang === 'es' ? 'ahora'        : 'just now';
+  if (mins < 60) return lang === 'es' ? `hace ${mins}m` : `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return lang === 'es' ? `hace ${hrs}h`  : `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return lang === 'es' ? `hace ${days}d` : `${days}d ago`;
+  return lang === 'es' ? `hace ${Math.floor(days/30)}mo` : `${Math.floor(days/30)}mo ago`;
+}
 
 function renderTblBody(id, rows) {
   const tbody = document.getElementById(id + '-body');
@@ -733,7 +820,8 @@ function sortTbl(id, col) {
     const cmp = (!isNaN(an) && !isNaN(bn)) ? an-bn : av.localeCompare(bv);
     return st.asc ? cmp : -cmp;
   });
-  renderTblBody(id, rows);
+  tblData[id] = rows;
+  if (id === 'tSessions') { renderSessionsBody(); } else { renderTblBody(id, rows); }
   document.querySelectorAll('#'+id+' th').forEach((th,ci) => {
     th.classList.remove('sort-asc','sort-desc');
     if (ci===col) th.classList.add(st.asc?'sort-asc':'sort-desc');
@@ -759,34 +847,277 @@ function updateModelTable(sessions) {
 
 function updateSessionsTable(sessions) {
   const sorted = [...sessions].sort((a,b) => b.datetime.localeCompare(a.datetime));
-  const i      = I18N[lang];
-  const label  = document.getElementById('sessions-count-label');
-  label.textContent = sessions.length > 20
-    ? i.showing_n_of.replace('%n%', 20).replace('%total%', sessions.length)
-    : i.n_sessions.replace('%n%', sessions.length);
-  const rows = sorted.slice(0,20).map(s => [
-    s.datetime.slice(0,16).replace('T',' '),
+  showAllSessions = false;
+  tblData['tSessions'] = sorted.map(s => [
+    relativeTime(s.datetime),
     s.project,
     s.duration_min.toFixed(0)+' min',
     s.primary_model,
     (s.total_tokens/1000).toFixed(0)+'k',
     '$'+s.estimated_cost.toFixed(4),
+    s.stop_reason || '—',
   ]);
-  tblData['tSessions'] = rows;
-  renderTblBody('tSessions', rows);
+  renderSessionsBody();
 }
 
-// ── Tips ──────────────────────────────────────────────────────────────────────
-function renderTips() {
+function renderSessionsBody() {
+  const all  = tblData['tSessions'] || [];
+  const rows = showAllSessions ? all : all.slice(0, 20);
+  renderTblBody('tSessions', rows);
+
+  const wrap = document.getElementById('sessions-table-wrap');
+  wrap.style.maxHeight = (showAllSessions && all.length > 20) ? '440px' : '';
+  wrap.style.overflowY = (showAllSessions && all.length > 20) ? 'auto'  : '';
+
+  const i     = I18N[lang];
+  const label = document.getElementById('sessions-count-label');
+  label.textContent = (!showAllSessions && all.length > 20)
+    ? i.showing_n_of.replace('%n%', 20).replace('%total%', all.length)
+    : i.n_sessions.replace('%n%', all.length);
+
+  const btn = document.getElementById('btn-show-all');
+  if (all.length <= 20) { btn.style.display = 'none'; return; }
+  btn.style.display = '';
+  btn.textContent = showAllSessions
+    ? i.show_less
+    : i.show_all.replace('%n%', all.length);
+}
+
+function toggleAllSessions() {
+  showAllSessions = !showAllSessions;
+  renderSessionsBody();
+}
+
+// ── Tips — compute + render ───────────────────────────────────────────────────
+function median(arr) {
+  if (!arr.length) return 0;
+  const s = [...arr].sort((a,b) => a-b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2;
+}
+
+function computeTips(sessions) {
+  if (!sessions.length) return [];
+  const tips             = [];
+  const totalCost        = sessions.reduce((a,s) => a + s.estimated_cost, 0);
+  const totalCacheRead   = sessions.reduce((a,s) => a + s.cache_read, 0);
+  const totalCacheCreate = sessions.reduce((a,s) => a + s.cache_create, 0);
+  const totalInput       = sessions.reduce((a,s) => a + s.input_tokens, 0);
+  const totalOutput      = sessions.reduce((a,s) => a + s.output_tokens, 0);
+
+  // 1. Cache hit rate
+  const cacheable = totalInput + totalCacheRead + totalCacheCreate;
+  const cacheRate = cacheable > 0 ? totalCacheRead / cacheable : 0;
+  const cachePct  = Math.round(cacheRate * 100);
+  if (cacheRate < 0.15) {
+    tips.push({ level:'warn',
+      title_es:'Baja tasa de cache',
+      body_es:`Solo el ${cachePct}% de los tokens de entrada viene de cache. Sesiones mas largas y reusar contexto entre mensajes mejora esto.`,
+      title_en:'Low cache hit rate',
+      body_en:`Only ${cachePct}% of input tokens come from cache. Longer sessions and reusing context between messages improves this.`,
+    });
+  } else if (cacheRate >= 0.40) {
+    tips.push({ level:'ok',
+      title_es:'Buena tasa de cache',
+      body_es:`${cachePct}% de tokens viene de cache -- buen uso del contexto de sesion.`,
+      title_en:'Good cache hit rate',
+      body_en:`${cachePct}% of tokens come from cache — good use of session context.`,
+    });
+  }
+
+  // 2. Opus proportion
+  const opusSess    = sessions.filter(s => s.primary_model==='opus' || s.primary_model==='mixed');
+  const opusPct     = Math.round(opusSess.length / sessions.length * 100);
+  const opusCost    = opusSess.reduce((a,s) => a + s.estimated_cost, 0);
+  const opusCostPct = Math.round(totalCost > 0 ? opusCost / totalCost * 100 : 0);
+  if (opusPct > 35) {
+    tips.push({ level:'warn',
+      title_es:'Alto uso de Opus',
+      body_es:`${opusPct}% de sesiones usan Opus (${opusCostPct}% del costo). Opus es ideal para planning y debugging complejo -- revisa si todas las sesiones lo justifican.`,
+      title_en:'High Opus usage',
+      body_en:`${opusPct}% of sessions use Opus (${opusCostPct}% of cost). Opus is ideal for planning and complex debugging — review whether all sessions justify it.`,
+    });
+  }
+
+  // 3. Short sessions
+  const short    = sessions.filter(s => s.duration_min < 3);
+  const shortPct = Math.round(short.length / sessions.length * 100);
+  if (shortPct > 30) {
+    tips.push({ level:'info',
+      title_es:'Muchas sesiones muy cortas',
+      body_es:`${shortPct}% de sesiones duran menos de 3 min. Cada sesion paga el costo de contexto inicial -- considera consolidar tareas cortas.`,
+      title_en:'Many very short sessions',
+      body_en:`${shortPct}% of sessions last under 3 min. Each session pays the initial context cost — consider consolidating short tasks.`,
+    });
+  }
+
+  // 4. Long sessions
+  const longSess = sessions.filter(s => s.duration_min > 120);
+  if (longSess.length >= 3) {
+    const avgCost = longSess.reduce((a,s) => a + s.estimated_cost, 0) / longSess.length;
+    tips.push({ level:'info',
+      title_es:'Sesiones muy largas',
+      body_es:`${longSess.length} sesiones superan 2 h (costo promedio $${avgCost.toFixed(2)}). Claude pierde efectividad en contextos muy largos -- considera /compact o dividir en sesiones.`,
+      title_en:'Very long sessions',
+      body_en:`${longSess.length} sessions exceed 2 h (avg cost $${avgCost.toFixed(2)}). Claude loses effectiveness in very long contexts — consider /compact or splitting into sessions.`,
+    });
+  }
+
+  // 5. Project cost concentration
+  const byProjCost = {};
+  for (const s of sessions) { byProjCost[s.project] = (byProjCost[s.project]||0) + s.estimated_cost; }
+  const projEntries = Object.entries(byProjCost);
+  if (projEntries.length > 2) {
+    const [topProj, topCost] = projEntries.sort((a,b) => b[1]-a[1])[0];
+    const topPct = Math.round(totalCost > 0 ? topCost / totalCost * 100 : 0);
+    if (topPct > 60) {
+      tips.push({ level:'info',
+        title_es:'Costo concentrado en un proyecto',
+        body_es:`'${topProj}' representa el ${topPct}% del costo total ($${topCost.toFixed(2)}). Puede ser intencional, pero vale revisarlo si el proyecto ya esta estable.`,
+        title_en:'Cost concentrated in one project',
+        body_en:`'${topProj}' accounts for ${topPct}% of total cost ($${topCost.toFixed(2)}). May be intentional, but worth reviewing if the project is already stable.`,
+      });
+    }
+  }
+
+  // 6. High output:input ratio
+  if (totalInput > 0) {
+    const ratio = totalOutput / totalInput;
+    if (ratio > 0.8) {
+      tips.push({ level:'info',
+        title_es:'Relacion output/input alta',
+        body_es:`Output es el ${Math.round(ratio*100)}% del input. El output es 5-25x mas caro que el input -- prompts mas precisos reducen los tokens generados.`,
+        title_en:'High output/input ratio',
+        body_en:`Output is ${Math.round(ratio*100)}% of input. Output costs 5-25x more than input — more precise prompts reduce generated tokens.`,
+      });
+    }
+  }
+
+  // 7. Median session duration
+  const med = median(sessions.map(s => s.duration_min));
+  if (med >= 20) {
+    tips.push({ level:'ok',
+      title_es:'Sesiones de buena duracion',
+      body_es:`Duracion mediana de ${Math.round(med)} min -- sesiones bien aprovechadas.`,
+      title_en:'Good session duration',
+      body_en:`Median duration of ${Math.round(med)} min — sessions are well-utilized.`,
+    });
+  }
+
+  // 8. max_tokens rate
+  const maxTokPct = sessions.filter(s => s.stop_reason==='max_tokens').length / sessions.length;
+  if (maxTokPct > 0.05) {
+    tips.push({ level:'warn',
+      title_es:'Sesiones que alcanzan el limite de contexto',
+      body_es:`${Math.round(maxTokPct*100)}% de sesiones alcanzan el limite de tokens. Usa /compact antes de que el contexto se llene o divide en sesiones mas cortas.`,
+      title_en:'Sessions hitting context limit',
+      body_en:`${Math.round(maxTokPct*100)}% of sessions hit the token limit. Use /compact before context fills up or split into shorter sessions.`,
+    });
+  }
+
+  return tips;
+}
+
+function buildClaudePrompt(sessions, tips, l) {
+  if (!sessions.length) return '';
+  const sorted = [...sessions].sort((a,b) => a.datetime.localeCompare(b.datetime));
+  const totalTokens      = sessions.reduce((a,s) => a + s.total_tokens, 0);
+  const totalCost        = sessions.reduce((a,s) => a + s.estimated_cost, 0);
+  const totalInput       = sessions.reduce((a,s) => a + s.input_tokens, 0);
+  const totalOutput      = sessions.reduce((a,s) => a + s.output_tokens, 0);
+  const totalCacheRead   = sessions.reduce((a,s) => a + s.cache_read, 0);
+  const totalCacheCreate = sessions.reduce((a,s) => a + s.cache_create, 0);
+  const medDur           = median(sessions.map(s => s.duration_min));
+  const cacheable        = totalInput + totalCacheRead + totalCacheCreate;
+  const cacheRate        = cacheable > 0 ? totalCacheRead / cacheable : 0;
+
+  const byProj = {};
+  for (const s of sessions) {
+    if (!byProj[s.project]) byProj[s.project] = {tokens:0,cost:0,sessions:0};
+    byProj[s.project].tokens   += s.total_tokens;
+    byProj[s.project].cost     += s.estimated_cost;
+    byProj[s.project].sessions += 1;
+  }
+  const top5 = Object.entries(byProj).sort((a,b) => b[1].cost-a[1].cost).slice(0,5);
+
+  const modelCount = {};
+  for (const s of sessions) { modelCount[s.primary_model] = (modelCount[s.primary_model]||0)+1; }
+
+  const sw         = l === 'en' ? 'sessions' : 'sesiones';
+  const tipLines   = tips.map(t=>`- [${t.level.toUpperCase()}] ${t['title_'+l]}: ${t['body_'+l]}`).join('\n');
+  const projLines  = top5.map(([n,d])=>`  - ${n}: ${d.sessions} ${sw}, ${d.tokens.toLocaleString()} tokens, $${d.cost.toFixed(2)}`).join('\n');
+  const modelLines = Object.entries(modelCount).sort().map(([m,c])=>`  - ${m}: ${c} ${sw}`).join('\n');
+
+  const firstDate = sorted[0].date;
+  const lastDate  = sorted[sorted.length-1].date;
+
+  if (l === 'en') return `Here are my Claude Code usage metrics. Analyze them and give me concrete recommendations to improve my workflow, reduce costs, and improve session quality.
+
+## General summary
+- Period: ${firstDate} -> ${lastDate}
+- Total sessions: ${sessions.length}
+- Active projects: ${Object.keys(byProj).length}
+- Total tokens: ${totalTokens.toLocaleString()} (input: ${totalInput.toLocaleString()}, output: ${totalOutput.toLocaleString()})
+- Estimated cost: $${totalCost.toFixed(2)} USD
+- Median session duration: ${Math.round(medDur)} min
+- Cache rate: ${Math.round(cacheRate*100)}% (read: ${totalCacheRead.toLocaleString()}, create: ${totalCacheCreate.toLocaleString()})
+
+## Distribution by project (top 5)
+${projLines}
+
+## Distribution by model
+${modelLines}
+
+## Automatically detected tips
+${tipLines || '  (none)'}
+
+## Questions I'd like to answer
+1. What patterns suggest inefficient usage?
+2. How could I improve the cache rate?
+3. Does the Sonnet/Opus balance make sense for the type of work I do?
+4. What should I change in my longer sessions?
+5. Are there any warning signs I'm not capturing with the automatic rules?`.trim();
+
+  return `Aqui estan mis metricas de uso de Claude Code. Analizalas y dame recomendaciones concretas para mejorar mi flujo de trabajo, reducir costos y mejorar la calidad de mis sesiones.
+
+## Resumen general
+- Periodo: ${firstDate} -> ${lastDate}
+- Sesiones totales: ${sessions.length}
+- Proyectos activos: ${Object.keys(byProj).length}
+- Tokens totales: ${totalTokens.toLocaleString()} (input: ${totalInput.toLocaleString()}, output: ${totalOutput.toLocaleString()})
+- Costo estimado: $${totalCost.toFixed(2)} USD
+- Duracion mediana de sesion: ${Math.round(medDur)} min
+- Tasa de cache: ${Math.round(cacheRate*100)}% (read: ${totalCacheRead.toLocaleString()}, create: ${totalCacheCreate.toLocaleString()})
+
+## Distribucion por proyecto (top 5)
+${projLines}
+
+## Distribucion por modelo
+${modelLines}
+
+## Tips automaticos detectados
+${tipLines || '  (ninguno)'}
+
+## Preguntas que me gustaria responder
+1. Que patrones ves que sugieran uso ineficiente?
+2. Como podria mejorar la tasa de cache?
+3. El balance Sonnet/Opus tiene sentido para el tipo de trabajo que hago?
+4. Que deberia cambiar en mis sesiones mas largas?
+5. Hay alguna senal de alerta que no este captando con las reglas automaticas?`.trim();
+}
+
+function renderTips(sessions, tips) {
   const container = document.getElementById('tips-container');
-  if (!TIPS.length) {
+  container.replaceChildren();
+  const resolved = tips ?? computeTips(sessions);
+  if (!resolved.length) {
     const p = document.createElement('p');
     p.style.cssText = 'font-size:.75rem;color:var(--muted)';
     p.textContent = I18N[lang].no_tips;
     container.appendChild(p);
     return;
   }
-  for (const t of TIPS) {
+  for (const t of resolved) {
     const wrap  = document.createElement('div');
     wrap.className = 'tip ' + t.level;
     const icon  = document.createElement('div');
@@ -794,7 +1125,7 @@ function renderTips() {
     icon.textContent = t.level === 'warn' ? '▲' : t.level === 'ok' ? '●' : '◆';
     const body  = document.createElement('div');
     const title = document.createElement('div');
-    title.className  = 'tip-title';
+    title.className   = 'tip-title';
     title.textContent = t['title_' + lang];
     const desc  = document.createElement('div');
     desc.className   = 'tip-body';
@@ -807,13 +1138,110 @@ function renderTips() {
   }
 }
 
+// ── Heatmap ───────────────────────────────────────────────────────────────────
+function buildHeatmapGrid(sessions) {
+  const grid = Array.from({length:7}, () => new Array(24).fill(0));
+  for (const s of sessions) {
+    const d    = new Date(s.datetime);
+    const dow  = (d.getDay() + 6) % 7; // 0=Mon..6=Sun
+    const hour = d.getHours();
+    grid[dow][hour]++;
+  }
+  return grid;
+}
+
+function renderHeatmap(sessions) {
+  const container = document.getElementById('heatmap-container');
+  container.replaceChildren();
+  const i    = I18N[lang];
+  const grid = buildHeatmapGrid(sessions);
+  const max  = Math.max(1, ...grid.flat());
+  const isDark = theme === 'dark';
+  const rgb  = isDark ? '79,158,255' : '21,101,192';
+  const alphas = [.07, .22, .44, .66, .88];
+
+  function cellColor(count) {
+    if (count === 0) return `rgba(${rgb},.05)`;
+    return `rgba(${rgb},${alphas[Math.min(4, Math.ceil(count / max * 4))]})`;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'heatmap-wrap';
+  const g = document.createElement('div');
+  g.className = 'heatmap-grid';
+
+  // Hour label row
+  const corner = document.createElement('div');
+  corner.className = 'hm-label';
+  g.appendChild(corner);
+  for (let h = 0; h < 24; h++) {
+    const lbl = document.createElement('div');
+    lbl.className = 'hm-label hm-hour';
+    lbl.textContent = h;
+    g.appendChild(lbl);
+  }
+
+  // Day rows
+  for (let d = 0; d < 7; d++) {
+    const dayLbl = document.createElement('div');
+    dayLbl.className = 'hm-label hm-day';
+    dayLbl.textContent = i.days[d];
+    g.appendChild(dayLbl);
+    for (let h = 0; h < 24; h++) {
+      const cell = document.createElement('div');
+      cell.className = 'hm-cell';
+      cell.style.background = cellColor(grid[d][h]);
+      cell.title = `${i.days[d]} ${String(h).padStart(2,'0')}:00 — ${grid[d][h]}`;
+      g.appendChild(cell);
+    }
+  }
+
+  wrap.appendChild(g);
+  container.appendChild(wrap);
+}
+
 // ── Apply filters ─────────────────────────────────────────────────────────────
 function applyFilters() {
-  const f = filterSessions();
+  const f    = filterSessions();
+  const tips = computeTips(f);
   updateKPIs(f);
   updateCharts(f);
   updateModelTable(f);
   updateSessionsTable(f);
+  renderHeatmap(f);
+  renderTips(f, tips);
+  updateDateRangeLabel(f);
+  _refreshPromptPreview(f, tips);
+}
+
+// ── Date range label ─────────────────────────────────────────────────────────
+function updateDateRangeLabel(sessions) {
+  const el = document.getElementById('date-range-label');
+  if (!sessions.length) { el.textContent = ''; return; }
+  const dates = sessions.map(s => s.date).sort();
+  el.textContent = dates[0] === dates[dates.length-1]
+    ? dates[0]
+    : `${dates[0]} → ${dates[dates.length-1]}`;
+}
+
+// ── Prompt preview ────────────────────────────────────────────────────────────
+let showPromptPreview = false;
+
+function togglePromptPreview() {
+  showPromptPreview = !showPromptPreview;
+  const el  = document.getElementById('prompt-preview');
+  const btn = document.getElementById('btn-preview');
+  const i   = I18N[lang];
+  el.style.display = showPromptPreview ? '' : 'none';
+  btn.textContent  = showPromptPreview ? i.btn_preview_hide : i.btn_preview;
+  if (showPromptPreview) _refreshPromptPreview();
+}
+
+function _refreshPromptPreview(f, tips) {
+  if (!showPromptPreview) return;
+  const sessions = f    ?? filterSessions();
+  const t        = tips ?? computeTips(sessions);
+  document.getElementById('prompt-preview-text').textContent = buildClaudePrompt(sessions, t, lang);
 }
 
 // ── Claude prompt copy ────────────────────────────────────────────────────────
@@ -822,12 +1250,14 @@ function copyClaudePrompt() {
   const i     = I18N[lang];
   const reset = () => { btn.textContent = i.btn_copy; btn.classList.remove('copied'); };
   const done  = () => { btn.textContent = i.btn_copied; btn.classList.add('copied'); setTimeout(reset, 2500); };
+  const f    = filterSessions();
+  const text = buildClaudePrompt(f, computeTips(f), lang);
   if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(CLAUDE_PROMPT[lang]).then(done).catch(fallback);
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
   } else { fallback(); }
   function fallback() {
     const ta = document.createElement('textarea');
-    ta.value = CLAUDE_PROMPT[lang];
+    ta.value = text;
     ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
     document.body.appendChild(ta);
     ta.focus(); ta.select();
@@ -849,7 +1279,9 @@ initCharts(initial);
 updateKPIs(initial);
 updateModelTable(initial);
 updateSessionsTable(initial);
-renderTips();
+renderTips(initial);
+renderHeatmap(initial);
+updateDateRangeLabel(initial);
 applyLang();
 </script>
 </body>
