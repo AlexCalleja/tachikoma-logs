@@ -159,4 +159,22 @@ def compute_tips(sessions: list[dict]) -> list[dict]:
             "body_en":  f"Median duration of {med:.0f} min — sessions are well-utilized.",
         })
 
+    # 8. Context limit (max_tokens stop reason)
+    max_tok_sessions = [s for s in sessions if s.get("stop_reason") == "max_tokens"]
+    max_tok_pct = len(max_tok_sessions) / len(sessions)
+    if max_tok_pct > 0.05:
+        tips.append({
+            "level":    "warn",
+            "title_es": "Sesiones que alcanzan el limite de contexto",
+            "body_es":  (
+                f"{max_tok_pct:.0%} de sesiones alcanzan el limite de tokens. "
+                "Usa /compact antes de que el contexto se llene o divide en sesiones mas cortas."
+            ),
+            "title_en": "Sessions hitting context limit",
+            "body_en":  (
+                f"{max_tok_pct:.0%} of sessions hit the token limit. "
+                "Use /compact before context fills up or split into shorter sessions."
+            ),
+        })
+
     return tips

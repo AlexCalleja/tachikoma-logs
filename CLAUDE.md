@@ -41,6 +41,8 @@ La estructura es plana por diseño (YAGNI) — mover los módulos a un paquete `
 - Se omiten paths que contengan `subagents` en algún componente
 - Deduplicación por `message.id` dentro de cada sesión — obligatoria (sin ella los tokens se inflan 2-3x por streaming)
 - Solo se procesan entradas con `type == "assistant"` y `message.usage` con tokens > 0
+- Campos adicionales extraídos por sesión: `entrypoint` (primer valor no-nulo), `permission_mode` (el más frecuente), `stop_reason` (el más frecuente excluyendo `tool_use`), `tools` (dict `{nombre: llamadas_totales}`)
+- `tool_use` se excluye de `stop_reason` porque domina (cada llamada a herramienta lo genera) y oculta los valores informativos
 
 ## Precios
 
@@ -55,7 +57,7 @@ pip install pytest pytest-cov
 python -m pytest -v
 ```
 
-Cubre `get_tier()`, `calc_cost()` y las reglas de `compute_tips()`.
+Cubre `get_tier()`, `calc_cost()`, las reglas de `compute_tips()`, y los nuevos campos de sesión (`entrypoint`, `permission_mode`, `stop_reason`, `tools`).
 
 ## Linter
 

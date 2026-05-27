@@ -5,9 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Changed
-- Extracted HTML/CSS/JS template from `html_builder.py` into `templates/dashboard.html`;
-  `html_builder.py` drops from 853 to 110 lines — data injected via `__PLACEHOLDER__` substitution
+## [0.4.0] — 2026-05-26
+
+### Added
+- Session metadata: `entrypoint`, `permission_mode`, `stop_reason`, `tools` fields in `log_parser.py`
+- New charts: entrypoint / permission mode / stop reason doughnuts + top-10 tools horizontal bar
+- New tip: warns when >5% of sessions hit the context limit (`max_tokens` stop reason)
+- 9 new unit tests covering the new session fields and max_tokens tip (24 total)
 
 ## [0.3.0] — 2026-05-26
 
