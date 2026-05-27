@@ -1,5 +1,6 @@
 import json
 import sys
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -55,14 +56,27 @@ def parse_sessions() -> list[dict]:
         except Exception:
             continue
 
-        cwd = next((e.get("cwd", "") for e in entries if e.get("cwd")), "")
+        cwd = ""
+        entrypoint = "unknown"
+        perm_counter: Counter = Counter()
+        for e in entries:
+            if not cwd and e.get("cwd"):
+                cwd = e["cwd"]
+            if entrypoint == "unknown" and e.get("entrypoint"):
+                entrypoint = e["entrypoint"]
+            if e.get("permissionMode"):
+                perm_counter[e["permissionMode"]] += 1
+
         project = Path(cwd.replace("\\", "/")).name if cwd else "unknown"
+        permission_mode = perm_counter.most_common(1)[0][0] if perm_counter else "unknown"
 
         seen_msg_ids: set = set()
         total = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
         models_used: set = set()
         timestamps = []
         estimated_cost = 0.0
+        stop_reason_counter: Counter = Counter()
+        tool_counter: Counter = Counter()
 
         for entry in entries:
             if entry.get("type") != "assistant":
@@ -92,6 +106,14 @@ def parse_sessions() -> list[dict]:
             if ts:
                 timestamps.append(ts)
 
+            sr = msg.get("stop_reason")
+            if sr and sr != "tool_use":
+                stop_reason_counter[sr] += 1
+
+            for block in msg.get("content", []):
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    tool_counter[block.get("name", "unknown")] += 1
+
         if not timestamps or total["output"] == 0:
             continue
 
@@ -108,19 +130,25 @@ def parse_sessions() -> list[dict]:
         else:
             primary = "sonnet"
 
+        stop_reason = stop_reason_counter.most_common(1)[0][0] if stop_reason_counter else "end_turn"
+
         sessions[session_id] = {
-            "session_id":     session_id,
-            "project":        project,
-            "date":           t0.strftime("%Y-%m-%d"),
-            "datetime":       t0.isoformat(),
-            "duration_min":   duration_min,
-            "input_tokens":   total["input"],
-            "output_tokens":  total["output"],
-            "cache_read":     total["cache_read"],
-            "cache_create":   total["cache_create"],
-            "total_tokens":   total["input"] + total["output"],
-            "primary_model":  primary,
-            "estimated_cost": round(estimated_cost, 4),
+            "session_id":      session_id,
+            "project":         project,
+            "date":            t0.strftime("%Y-%m-%d"),
+            "datetime":        t0.isoformat(),
+            "duration_min":    duration_min,
+            "input_tokens":    total["input"],
+            "output_tokens":   total["output"],
+            "cache_read":      total["cache_read"],
+            "cache_create":    total["cache_create"],
+            "total_tokens":    total["input"] + total["output"],
+            "primary_model":   primary,
+            "estimated_cost":  round(estimated_cost, 4),
+            "entrypoint":      entrypoint,
+            "permission_mode": permission_mode,
+            "stop_reason":     stop_reason,
+            "tools":           dict(tool_counter),
         }
 
     result = sorted(sessions.values(), key=lambda s: s["datetime"])

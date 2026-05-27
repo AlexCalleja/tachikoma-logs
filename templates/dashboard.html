@@ -5,96 +5,129 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>tachikoma-logs</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg:#0d1117; --surface:#161b22; --border:#30363d;
-      --text:#e6edf3; --muted:#7d8590; --accent:#58a6ff;
-      --green:#3fb950; --purple:#bc8cff; --orange:#f0883e; --red:#f85149;
-      --warn-bg:rgba(240,136,62,.12); --warn-border:rgba(240,136,62,.4);
-      --info-bg:rgba(88,166,255,.10); --info-border:rgba(88,166,255,.35);
-      --ok-bg:rgba(63,185,80,.10);    --ok-border:rgba(63,185,80,.35);
+      --bg:#04111f; --surface:#0b1d30; --border:rgba(79,158,255,.18);
+      --text:#c5dcf2; --muted:#7fa9d4; --accent:#4f9eff;
+      --green:#34d399; --purple:#a78bfa; --orange:#fb923c; --red:#ff5c73;
+      --warn-bg:rgba(251,146,60,.09);  --warn-border:rgba(251,146,60,.3);
+      --info-bg:rgba(79,158,255,.09);  --info-border:rgba(79,158,255,.28);
+      --ok-bg:rgba(52,211,153,.09);    --ok-border:rgba(52,211,153,.28);
     }
     [data-theme="light"] {
-      --bg:#ffffff; --surface:#f6f8fa; --border:#d0d7de;
-      --text:#1f2328; --muted:#636e7b; --accent:#0969da;
-      --green:#1a7f37; --purple:#8250df; --orange:#bc4c00; --red:#cf222e;
-      --warn-bg:rgba(188,76,0,.08);   --warn-border:rgba(188,76,0,.3);
-      --info-bg:rgba(9,105,218,.08);  --info-border:rgba(9,105,218,.3);
-      --ok-bg:rgba(26,127,55,.08);    --ok-border:rgba(26,127,55,.3);
+      --bg:#dce8f5; --surface:#f5f9fd; --border:rgba(21,101,192,.2);
+      --text:#0b1f38; --muted:#5b7fa6; --accent:#1565c0;
+      --green:#0d7f5c; --purple:#6d28d9; --orange:#b45309; --red:#c8001e;
+      --warn-bg:rgba(180,83,9,.08);    --warn-border:rgba(180,83,9,.28);
+      --info-bg:rgba(21,101,192,.08);  --info-border:rgba(21,101,192,.28);
+      --ok-bg:rgba(13,127,92,.08);     --ok-border:rgba(13,127,92,.28);
     }
     * { box-sizing:border-box; margin:0; padding:0 }
-    body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:2rem; max-width:1200px; margin:0 auto }
-    h1   { font-size:1.15rem; font-weight:700; margin-bottom:.25rem }
-    .meta { font-size:.7rem; color:var(--muted); font-family:'JetBrains Mono','Fira Code',monospace; margin-bottom:1rem }
+    body {
+      background:var(--bg); color:var(--text);
+      font-family:'Sora','DM Sans',sans-serif;
+      padding:2rem; max-width:1200px; margin:0 auto; font-size:.875rem;
+    }
+    h1 {
+      font-family:'JetBrains Mono','Fira Code',monospace;
+      font-size:1.05rem; font-weight:600; margin-bottom:.2rem; letter-spacing:-.01em;
+    }
+    h1::before { content:'$ '; color:var(--accent) }
+    .meta { font-size:.67rem; color:var(--muted); font-family:'JetBrains Mono',monospace; margin-bottom:1.25rem; letter-spacing:.01em }
 
     /* ── Filters ── */
     .filters { display:flex; align-items:center; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.25rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:.65rem 1rem }
-    .filter-group { display:flex; gap:.35rem }
-    .filter-btn { background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:.3rem .7rem; font-size:.72rem; font-weight:600; cursor:pointer; transition:all .15s }
+    .filter-group { display:flex; gap:.3rem }
+    .filter-btn {
+      background:transparent; color:var(--muted); border:1px solid var(--border);
+      border-radius:5px; padding:.3rem .7rem; font-size:.68rem; font-weight:600;
+      font-family:'JetBrains Mono',monospace; cursor:pointer; transition:all .15s; letter-spacing:.02em;
+    }
     .filter-btn:hover { color:var(--text); border-color:var(--accent) }
-    .filter-btn.active { background:var(--accent); color:#fff; border-color:var(--accent) }
-    [data-theme="dark"] .filter-btn.active { color:#0d1117 }
+    .filter-btn.active { background:var(--accent); color:#04111f; border-color:var(--accent) }
+    [data-theme="light"] .filter-btn.active { color:#f5f9fd }
     .filter-sep { width:1px; background:var(--border); align-self:stretch }
     .model-filters { display:flex; gap:.85rem; flex-wrap:wrap }
-    .model-check { display:flex; align-items:center; gap:.35rem; font-size:.72rem; color:var(--muted); cursor:pointer; user-select:none }
+    .model-check { display:flex; align-items:center; gap:.35rem; font-size:.7rem; color:var(--muted); cursor:pointer; user-select:none }
     .model-check input { accent-color:var(--accent); cursor:pointer }
     .model-check:hover { color:var(--text) }
     .toggle-group { margin-left:auto; display:flex; gap:.35rem }
 
     /* ── Stats ── */
     .stats { display:grid; grid-template-columns:repeat(5,1fr); gap:.75rem; margin-bottom:1.25rem }
-    .stat { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:.9rem 1.1rem }
-    .stat .lbl { font-size:.6rem; color:var(--muted); text-transform:uppercase; letter-spacing:.07em }
-    .stat .val { font-size:1.35rem; font-weight:700; margin-top:.2rem }
-    .stat .sub { font-size:.6rem; color:var(--muted); margin-top:.1rem }
+    .stat {
+      background:var(--surface); border:1px solid var(--border); border-radius:8px;
+      padding:.9rem 1.1rem; border-left:2px solid var(--accent);
+      transition:border-color .2s, box-shadow .2s;
+    }
+    .stat:hover { box-shadow:0 0 0 1px var(--accent) inset }
+    .stat .lbl { font-size:.57rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; font-weight:500 }
+    .stat .val { font-size:1.45rem; font-weight:600; margin-top:.25rem; font-family:'JetBrains Mono',monospace; letter-spacing:-.03em }
+    .stat .sub { font-size:.57rem; color:var(--muted); margin-top:.12rem; font-family:'JetBrains Mono',monospace }
 
     /* ── Charts ── */
     .grid { display:grid; grid-template-columns:1fr 1fr; gap:.85rem; margin-bottom:1.25rem }
-    .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.1rem }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.25rem; transition:border-color .2s }
+    .card:hover { border-color:rgba(6,182,212,.3) }
     .card.full { grid-column:1/-1 }
-    .card h2 { font-size:.62rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.85rem }
+    .card h2 { font-size:.57rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; margin-bottom:1rem; font-family:'JetBrains Mono',monospace }
     canvas { max-height:240px }
 
     /* ── Tips ── */
-    .section-title { font-size:.62rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:.6rem }
+    .section-title { font-size:.57rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; margin-bottom:.7rem; font-family:'JetBrains Mono',monospace }
     .tips-section { margin-bottom:1.25rem }
-    .tip { border-radius:7px; padding:.75rem 1rem; margin-bottom:.5rem; display:flex; gap:.75rem; align-items:flex-start }
+    .tip { border-radius:7px; padding:.8rem 1.1rem; margin-bottom:.5rem; display:flex; gap:.8rem; align-items:flex-start }
     .tip.warn { background:var(--warn-bg); border:1px solid var(--warn-border) }
     .tip.info { background:var(--info-bg); border:1px solid var(--info-border) }
     .tip.ok   { background:var(--ok-bg);   border:1px solid var(--ok-border) }
-    .tip-icon { font-size:.85rem; flex-shrink:0; margin-top:.05rem; width:1rem; text-align:center }
-    .tip-title { font-size:.75rem; font-weight:600; margin-bottom:.2rem }
+    .tip-icon { font-size:.8rem; flex-shrink:0; margin-top:.1rem; width:1rem; text-align:center; font-family:'JetBrains Mono',monospace }
+    .tip-title { font-size:.72rem; font-weight:600; margin-bottom:.25rem }
     .tip.warn .tip-title { color:var(--orange) }
     .tip.info .tip-title { color:var(--accent) }
     .tip.ok   .tip-title { color:var(--green) }
-    .tip-body { font-size:.72rem; color:var(--muted); line-height:1.5 }
+    .tip-body { font-size:.7rem; color:var(--muted); line-height:1.55 }
 
     /* ── Tables ── */
     .tables-section { margin-bottom:1.25rem }
-    .data-table { width:100%; border-collapse:collapse; font-size:.72rem }
-    .data-table th { text-align:left; padding:.5rem .75rem; color:var(--muted); font-size:.6rem; text-transform:uppercase; letter-spacing:.07em; border-bottom:1px solid var(--border); cursor:pointer; white-space:nowrap; user-select:none }
+    .data-table { width:100%; border-collapse:collapse; font-size:.7rem }
+    .data-table th {
+      text-align:left; padding:.55rem .8rem; color:var(--muted); font-size:.57rem;
+      text-transform:uppercase; letter-spacing:.09em; border-bottom:1px solid var(--border);
+      cursor:pointer; white-space:nowrap; user-select:none; font-family:'JetBrains Mono',monospace;
+    }
     .data-table th:hover { color:var(--text) }
     .data-table th.sort-asc::after  { content:' ↑'; color:var(--accent) }
     .data-table th.sort-desc::after { content:' ↓'; color:var(--accent) }
-    .data-table td { padding:.45rem .75rem; border-bottom:1px solid rgba(128,128,128,.15); color:var(--text) }
+    .data-table td { padding:.5rem .8rem; border-bottom:1px solid rgba(128,128,128,.1); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:.68rem }
     .data-table tr:last-child td { border-bottom:none }
-    .data-table tr:hover td { background:rgba(128,128,128,.05) }
-    .model-tag { display:inline-block; padding:.1rem .45rem; border-radius:4px; font-size:.65rem; font-weight:600 }
-    .model-tag.opus   { background:rgba(188,140,255,.15); color:var(--purple) }
-    .model-tag.sonnet { background:rgba(88,166,255,.15);  color:var(--accent) }
-    .model-tag.haiku  { background:rgba(63,185,80,.15);   color:var(--green) }
-    .model-tag.mixed  { background:rgba(240,136,62,.15);  color:var(--orange) }
+    .data-table tr:hover td { background:rgba(6,182,212,.04) }
+    .model-tag { display:inline-block; padding:.1rem .5rem; border-radius:4px; font-size:.62rem; font-weight:600; letter-spacing:.02em }
+    .model-tag.opus   { background:rgba(167,139,250,.15); color:var(--purple) }
+    .model-tag.sonnet { background:rgba(6,182,212,.15);   color:var(--accent) }
+    .model-tag.haiku  { background:rgba(52,211,153,.15);  color:var(--green) }
+    .model-tag.mixed  { background:rgba(251,146,60,.15);  color:var(--orange) }
     .empty-row { color:var(--muted); font-style:italic }
 
     /* ── Claude prompt ── */
     .claude-section { margin-bottom:1.25rem }
-    .claude-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1rem 1.25rem; display:flex; align-items:center; gap:1rem }
-    .claude-desc { flex:1; font-size:.75rem; color:var(--muted); line-height:1.5 }
+    .claude-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.1rem 1.4rem; display:flex; align-items:center; gap:1.1rem }
+    .claude-desc { flex:1; font-size:.72rem; color:var(--muted); line-height:1.6 }
     .claude-desc strong { color:var(--text) }
-    .btn-copy { background:var(--accent); color:#fff; border:none; border-radius:6px; padding:.55rem 1.1rem; font-size:.75rem; font-weight:700; cursor:pointer; white-space:nowrap; transition:opacity .15s }
-    [data-theme="dark"] .btn-copy { color:#0d1117 }
-    .btn-copy:hover { opacity:.85 }
+    .btn-copy { background:var(--accent); color:#04111f; border:none; border-radius:6px; padding:.58rem 1.2rem; font-size:.72rem; font-weight:700; font-family:'Sora',sans-serif; cursor:pointer; white-space:nowrap; transition:all .15s; letter-spacing:.02em }
+    [data-theme="light"] .btn-copy { color:#f5f9fd }
+    .btn-copy:hover { opacity:.85; transform:translateY(-1px) }
     .btn-copy.copied { background:var(--green) }
+
+    /* ── Animations ── */
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
+    .filters          { animation:fadeUp .35s ease both; animation-delay:.04s }
+    .stats            { animation:fadeUp .35s ease both; animation-delay:.1s }
+    .grid             { animation:fadeUp .35s ease both; animation-delay:.17s }
+    .tips-section     { animation:fadeUp .35s ease both; animation-delay:.24s }
+    .tables-section   { animation:fadeUp .35s ease both; animation-delay:.31s }
+    .claude-section   { animation:fadeUp .35s ease both; animation-delay:.37s }
 
     @media(max-width:900px) { .stats{grid-template-columns:repeat(3,1fr)} .grid{grid-template-columns:1fr} }
     @media(max-width:600px) { .stats{grid-template-columns:1fr 1fr} body{padding:1rem} .filters{flex-direction:column;align-items:flex-start} .toggle-group{margin-left:0} }
@@ -137,6 +170,13 @@
     <div class="card"><h2 data-i18n="chart_proj"></h2><canvas id="cProj"></canvas></div>
     <div class="card"><h2 data-i18n="chart_model"></h2><canvas id="cModel"></canvas></div>
     <div class="card full"><h2 data-i18n="chart_dur"></h2><canvas id="cDur"></canvas></div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="card"><h2 data-i18n="chart_entrypoint"></h2><canvas id="cEntrypoint"></canvas></div>
+    <div class="card"><h2 data-i18n="chart_perm"></h2><canvas id="cPerm"></canvas></div>
+    <div class="card"><h2 data-i18n="chart_stopreason"></h2><canvas id="cStopReason"></canvas></div>
+    <div class="card full"><h2 data-i18n="chart_tools"></h2><canvas id="cTools" style="max-height:320px"></canvas></div>
   </div>
 
   <div class="tips-section">
@@ -191,8 +231,8 @@ const ALL_SESSIONS  = __SESSIONS_JSON__;
 const TIPS          = __TIPS_JSON__;
 const CLAUDE_PROMPT = { es: __CLAUDE_PROMPT_ES__, en: __CLAUDE_PROMPT_EN__ };
 
-const MODEL_COLORS = { sonnet:'#58a6ff', opus:'#bc8cff', haiku:'#3fb950', mixed:'#f0883e' };
-const PALETTE = ['#58a6ff','#3fb950','#f0883e','#bc8cff','#f85149','#56d364','#e3b341','#d2a8ff','#ffa657','#ff7b72'];
+const MODEL_COLORS = { sonnet:'#4f9eff', opus:'#a78bfa', haiku:'#34d399', mixed:'#fb923c' };
+const PALETTE = ['#4f9eff','#34d399','#fb923c','#a78bfa','#ff5c73','#6ab0ff','#e3b341','#c084fc','#fda4af','#4ade80'];
 const DUR_EDGES  = [0,5,15,30,60,120,9999];
 const DUR_LABELS = ['<5 min','5-15 min','15-30 min','30-60 min','1-2 h','>2 h'];
 
@@ -213,6 +253,10 @@ const I18N = {
     chart_proj:         'Top proyectos (tokens)',
     chart_model:        'Modelo primario por sesion',
     chart_dur:          'Distribucion de duracion de sesiones',
+    chart_entrypoint:   'Entrypoint por sesion',
+    chart_perm:         'Modo de permisos',
+    chart_stopreason:   'Razon de fin de sesion',
+    chart_tools:        'Top 10 herramientas (llamadas totales)',
     axis_tokens:        'Tokens',
     axis_usd:           'USD',
     ds_input:           'Input',
@@ -262,6 +306,10 @@ const I18N = {
     chart_proj:         'Top projects (tokens)',
     chart_model:        'Primary model per session',
     chart_dur:          'Session duration distribution',
+    chart_entrypoint:   'Entrypoint by session',
+    chart_perm:         'Permission mode',
+    chart_stopreason:   'Session end reason',
+    chart_tools:        'Top 10 tools (total calls)',
     axis_tokens:        'Tokens',
     axis_usd:           'USD',
     ds_input:           'Input',
@@ -335,8 +383,8 @@ function setTheme(t) {
   localStorage.setItem('theme', t);
   document.documentElement.setAttribute('data-theme', t);
   const isDark = t === 'dark';
-  Chart.defaults.color       = isDark ? '#7d8590' : '#636e7b';
-  Chart.defaults.borderColor = isDark ? '#30363d' : '#d0d7de';
+  Chart.defaults.color       = isDark ? '#7fa9d4' : '#5b7fa6';
+  Chart.defaults.borderColor = isDark ? 'rgba(79,158,255,.15)' : 'rgba(21,101,192,.15)';
   document.getElementById('btn-theme').textContent = isDark ? '☀' : '☾';
   Object.values(charts).forEach(c => c.destroy());
   initCharts(filterSessions());
@@ -424,6 +472,25 @@ function aggrDuration(sessions) {
   return counts;
 }
 
+function aggrByField(sessions, field) {
+  const map = {};
+  for (const s of sessions) {
+    const v = s[field] || 'unknown';
+    map[v] = (map[v] || 0) + 1;
+  }
+  return map;
+}
+
+function aggrTools(sessions) {
+  const map = {};
+  for (const s of sessions) {
+    for (const [tool, count] of Object.entries(s.tools || {})) {
+      map[tool] = (map[tool] || 0) + count;
+    }
+  }
+  return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 10);
+}
+
 // ── KPIs ──────────────────────────────────────────────────────────────────────
 function updateKPIs(sessions) {
   if (!sessions.length) {
@@ -448,8 +515,8 @@ const charts = {};
 function initCharts(sessions) {
   const i      = I18N[lang];
   const isDark = theme === 'dark';
-  const GRID   = { color: isDark ? 'rgba(48,54,61,.5)' : 'rgba(208,215,222,.5)' };
-  const TICKS  = { color: isDark ? '#7d8590' : '#636e7b', font: { size:11 } };
+  const GRID   = { color: isDark ? 'rgba(79,158,255,.1)' : 'rgba(21,101,192,.1)' };
+  const TICKS  = { color: isDark ? '#7fa9d4' : '#5b7fa6', font: { size:11, family:"'JetBrains Mono',monospace" } };
 
   const {dates, map} = aggrByDate(sessions);
   const proj   = aggrByProject(sessions);
@@ -461,11 +528,11 @@ function initCharts(sessions) {
     data: {
       labels: dates,
       datasets: [
-        { type:'bar',  label:i.ds_input,        data:dates.map(d=>map[d].input),        backgroundColor:'rgba(88,166,255,.5)',  borderColor:'#58a6ff',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' },
-        { type:'bar',  label:i.ds_output,       data:dates.map(d=>map[d].output),       backgroundColor:'rgba(188,140,255,.5)',borderColor:'#bc8cff',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' },
-        { type:'bar',  label:i.ds_cache_read,   data:dates.map(d=>map[d].cache_read),   backgroundColor:'rgba(63,185,80,.4)',  borderColor:'#3fb950',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' },
-        { type:'bar',  label:i.ds_cache_create, data:dates.map(d=>map[d].cache_create), backgroundColor:'rgba(240,136,62,.4)', borderColor:'#f0883e',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' },
-        { type:'line', label:i.ds_cost,         data:dates.map(d=>+map[d].cost.toFixed(4)), borderColor:'#f85149',backgroundColor:'transparent',borderWidth:1.5,pointRadius:2,tension:0.3,yAxisID:'y2' },
+        { type:'bar',  label:i.ds_input,        data:dates.map(d=>map[d].input),        backgroundColor:'rgba(79,158,255,.45)', borderColor:'#4f9eff',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' },
+        { type:'bar',  label:i.ds_output,       data:dates.map(d=>map[d].output),       backgroundColor:'rgba(167,139,250,.45)',borderColor:'#a78bfa',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' },
+        { type:'bar',  label:i.ds_cache_read,   data:dates.map(d=>map[d].cache_read),   backgroundColor:'rgba(52,211,153,.4)',  borderColor:'#34d399',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' },
+        { type:'bar',  label:i.ds_cache_create, data:dates.map(d=>map[d].cache_create), backgroundColor:'rgba(251,146,60,.4)',  borderColor:'#fb923c',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' },
+        { type:'line', label:i.ds_cost,         data:dates.map(d=>+map[d].cost.toFixed(4)), borderColor:'#ff5c73',backgroundColor:'transparent',borderWidth:1.5,pointRadius:2,tension:0.3,yAxisID:'y2' },
       ],
     },
     options: {
@@ -506,8 +573,50 @@ function initCharts(sessions) {
 
   charts.dur = new Chart(document.getElementById('cDur'), {
     type:'bar',
-    data:{labels:DUR_LABELS,datasets:[{label:i.kpi_sessions,data:dur,backgroundColor:'rgba(63,185,80,.45)',borderColor:'#3fb950',borderWidth:1,borderRadius:3}]},
+    data:{labels:DUR_LABELS,datasets:[{label:i.kpi_sessions,data:dur,backgroundColor:'rgba(52,211,153,.4)',borderColor:'#34d399',borderWidth:1,borderRadius:3}]},
     options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:GRID,ticks:TICKS},y:{grid:GRID,ticks:TICKS}}},
+  });
+
+  const entryMap   = aggrByField(sessions, 'entrypoint');
+  const permMap    = aggrByField(sessions, 'permission_mode');
+  const stopMap    = aggrByField(sessions, 'stop_reason');
+  const toolsTop10 = aggrTools(sessions);
+
+  const doughnutOpts = (pos) => ({
+    responsive:true,
+    plugins:{legend:{position:pos,labels:{font:{size:11},boxWidth:12}}},
+  });
+
+  charts.entrypoint = new Chart(document.getElementById('cEntrypoint'), {
+    type:'doughnut',
+    data:{labels:Object.keys(entryMap),datasets:[{data:Object.values(entryMap),backgroundColor:PALETTE,borderWidth:0}]},
+    options:doughnutOpts('right'),
+  });
+
+  charts.perm = new Chart(document.getElementById('cPerm'), {
+    type:'doughnut',
+    data:{labels:Object.keys(permMap),datasets:[{data:Object.values(permMap),backgroundColor:PALETTE.slice(3),borderWidth:0}]},
+    options:doughnutOpts('right'),
+  });
+
+  charts.stopreason = new Chart(document.getElementById('cStopReason'), {
+    type:'doughnut',
+    data:{labels:Object.keys(stopMap),datasets:[{data:Object.values(stopMap),backgroundColor:['#34d399','#ff5c73','#e3b341','#a78bfa'],borderWidth:0}]},
+    options:doughnutOpts('right'),
+  });
+
+  charts.tools = new Chart(document.getElementById('cTools'), {
+    type:'bar',
+    data:{
+      labels:toolsTop10.map(e=>e[0]),
+      datasets:[{data:toolsTop10.map(e=>e[1]),backgroundColor:'rgba(79,158,255,.45)',borderColor:'#4f9eff',borderWidth:1,borderRadius:3}],
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      plugins:{legend:{display:false}},
+      scales:{x:{grid:GRID,ticks:TICKS},y:{grid:{display:false},ticks:{...TICKS,font:{size:11}}}},
+    },
   });
 }
 
@@ -541,6 +650,26 @@ function updateCharts(sessions) {
 
   charts.dur.data.datasets[0].data = aggrDuration(sessions);
   charts.dur.update();
+
+  const entryMap = aggrByField(sessions, 'entrypoint');
+  charts.entrypoint.data.labels = Object.keys(entryMap);
+  charts.entrypoint.data.datasets[0].data = Object.values(entryMap);
+  charts.entrypoint.update();
+
+  const permMap = aggrByField(sessions, 'permission_mode');
+  charts.perm.data.labels = Object.keys(permMap);
+  charts.perm.data.datasets[0].data = Object.values(permMap);
+  charts.perm.update();
+
+  const stopMap = aggrByField(sessions, 'stop_reason');
+  charts.stopreason.data.labels = Object.keys(stopMap);
+  charts.stopreason.data.datasets[0].data = Object.values(stopMap);
+  charts.stopreason.update();
+
+  const toolsTop10 = aggrTools(sessions);
+  charts.tools.data.labels = toolsTop10.map(e=>e[0]);
+  charts.tools.data.datasets[0].data = toolsTop10.map(e=>e[1]);
+  charts.tools.update();
 }
 
 function updateChartLabels() {
@@ -662,7 +791,7 @@ function renderTips() {
     wrap.className = 'tip ' + t.level;
     const icon  = document.createElement('div');
     icon.className   = 'tip-icon';
-    icon.textContent = t.level === 'warn' ? '!' : t.level === 'ok' ? 'v' : 'i';
+    icon.textContent = t.level === 'warn' ? '▲' : t.level === 'ok' ? '●' : '◆';
     const body  = document.createElement('div');
     const title = document.createElement('div');
     title.className  = 'tip-title';
@@ -710,8 +839,8 @@ function copyClaudePrompt() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.documentElement.setAttribute('data-theme', theme);
 document.documentElement.lang = lang;
-Chart.defaults.color       = theme === 'dark' ? '#7d8590' : '#636e7b';
-Chart.defaults.borderColor = theme === 'dark' ? '#30363d' : '#d0d7de';
+Chart.defaults.color       = theme === 'dark' ? '#7fa9d4' : '#5b7fa6';
+Chart.defaults.borderColor = theme === 'dark' ? 'rgba(79,158,255,.15)' : 'rgba(21,101,192,.15)';
 if (theme === 'light') document.getElementById('btn-theme').textContent = '☾';
 if (lang  !== 'es')   document.getElementById('btn-lang').textContent  = 'ES';
 
