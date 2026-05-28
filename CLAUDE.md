@@ -52,14 +52,32 @@ Hardcodeados en `log_parser.py` (dict `PRICES`). Actualizar al inicio de cada ve
 
 ## Tests
 
+### Unit tests
 ```bash
-# desarrollo local (solo la primera vez)
-pip install pytest pytest-cov
+# primera vez
+pip install pytest pytest-cov ruff
 
-python -m pytest -v
+python -m pytest tests/test_log_parser.py tests/test_tips.py -v
 ```
 
-Cubre `get_tier()`, `calc_cost()`, las reglas de `compute_tips()`, y los campos de sesión (`entrypoint`, `permission_mode`, `stop_reason`, `tools`, `message_count`, filtro AppData). 27 tests en total.
+Cubre `get_tier()`, `calc_cost()`, las reglas de `compute_tips()`, y los campos de sesión (`entrypoint`, `permission_mode`, `stop_reason`, `tools`, `message_count`, filtro AppData, skill/agent expansion). 29 tests.
+
+### E2E tests (Playwright)
+
+Detecta errores JS que los unit tests no pueden ver: funciones no definidas, charts que no cargan, `sortTbl` crasheando, regressions en filtros y toggles.
+
+```bash
+# primera vez
+pip install pytest-playwright
+playwright install chromium
+
+# generar el dashboard primero
+python generate.py
+
+python -m pytest tests/test_e2e.py -v
+```
+
+Cubre: carga sin errores JS, todos los canvases, filtros de fecha/modelo, sort en tSkills/tProj/tModel, toggles de idioma y tema.
 
 ## Linter
 
@@ -72,9 +90,9 @@ Configurado en `pyproject.toml`. Correr antes de cada commit.
 
 ## CI
 
-GitHub Actions corre automáticamente en cada push y PR a `develop` o `master`:
+GitHub Actions corre automáticamente en cada push y PR a `develop` o `master`. Dos jobs en paralelo:
 
-1. `ruff check .` — lint
-2. `python -m pytest -v` — tests
+- **`unit`**: `ruff check .` + `pytest test_log_parser.py test_tips.py`
+- **`e2e`**: genera el dashboard + `pytest test_e2e.py` con Chromium (Playwright)
 
-La rama `master` tiene branch protection activa: el CI debe estar en verde antes de poder mergear.
+La rama `master` tiene branch protection activa: ambos jobs deben estar en verde antes de poder mergear.
