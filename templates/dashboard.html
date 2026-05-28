@@ -232,10 +232,37 @@
     <div class="card"><h2 data-i18n="chart_perm"></h2><canvas id="cPerm"></canvas></div>
     <div class="card"><h2 data-i18n="chart_stopreason"></h2><canvas id="cStopReason"></canvas></div>
     <div class="card full"><h2 data-i18n="chart_tools"></h2><canvas id="cTools" style="max-height:320px"></canvas></div>
+    <div class="card full">
+      <h2 data-i18n="chart_skills"></h2>
+      <table class="data-table" id="tSkills">
+        <thead><tr>
+          <th data-i18n="th_skill"></th>
+          <th data-i18n="th_project"></th>
+          <th data-i18n="th_calls"></th>
+          <th data-i18n="th_uniq_sessions"></th>
+          <th data-i18n="th_last_used"></th>
+        </tr></thead>
+        <tbody id="tSkills-body"></tbody>
+      </table>
+    </div>
     <div class="card full"><h2 data-i18n="chart_heatmap"></h2><div id="heatmap-container"></div></div>
   </div>
 
   <div class="tables-section">
+    <div class="card" style="margin-bottom:.85rem">
+      <h2 data-i18n="tbl_proj_title"></h2>
+      <table class="data-table" id="tProj">
+        <thead><tr>
+          <th onclick="sortTbl('tProj',0)" data-i18n="th_project"></th>
+          <th onclick="sortTbl('tProj',1)" data-i18n="th_sessions"></th>
+          <th onclick="sortTbl('tProj',2)" data-i18n="th_tokens"></th>
+          <th onclick="sortTbl('tProj',3)" data-i18n="th_cost_usd"></th>
+          <th onclick="sortTbl('tProj',4)" data-i18n="th_pct_total"></th>
+          <th onclick="sortTbl('tProj',5)" data-i18n="th_model_col"></th>
+        </tr></thead>
+        <tbody id="tProj-body"></tbody>
+      </table>
+    </div>
     <div class="card" style="margin-bottom:.85rem">
       <h2 data-i18n="tbl_model_title"></h2>
       <table class="data-table" id="tModel">
@@ -321,6 +348,14 @@ const I18N = {
     chart_perm:         'Modo de permisos',
     chart_stopreason:   'Razon de fin de sesion',
     chart_tools:        'Top 10 herramientas (llamadas totales)',
+    chart_skills:       'Skills & Agents por proyecto',
+    th_skill:           'Skill / Agent',
+    th_calls:           'Llamadas',
+    th_uniq_sessions:   'Sesiones',
+    th_last_used:       'Último uso',
+    no_skills:          'Sin skills ni agentes en este período.',
+    tbl_proj_title:     'Costo por proyecto',
+    th_pct_total:       '% total',
     chart_heatmap:      'Actividad por hora y día de semana',
     days:               ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'],
     axis_tokens:        'Tokens',
@@ -381,6 +416,14 @@ const I18N = {
     chart_perm:         'Permission mode',
     chart_stopreason:   'Session end reason',
     chart_tools:        'Top 10 tools (total calls)',
+    chart_skills:       'Skills & Agents by project',
+    th_skill:           'Skill / Agent',
+    th_calls:           'Calls',
+    th_uniq_sessions:   'Sessions',
+    th_last_used:       'Last used',
+    no_skills:          'No skills or agents in this period.',
+    tbl_proj_title:     'Cost by project',
+    th_pct_total:       '% total',
     chart_heatmap:      'Activity by hour and day of week',
     days:               ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
     axis_tokens:        'Tokens',
@@ -1227,14 +1270,109 @@ function renderHeatmap(sessions) {
   container.appendChild(wrap);
 }
 
+// ── Skills & Agents ───────────────────────────────────────────────────────────
+function aggrSkills(sessions) {
+  const map = {};
+  for (const s of sessions) {
+    for (const [tool, count] of Object.entries(s.tools || {})) {
+      if (!tool.startsWith('skill/') && !tool.startsWith('agent/')) continue;
+      const key = tool + '\0' + (s.project || 'unknown');
+      if (!map[key]) map[key] = { calls: 0, sids: new Set(), lastUsed: '' };
+      map[key].calls += count;
+      map[key].sids.add(s.session_id);
+      if (s.datetime > map[key].lastUsed) map[key].lastUsed = s.datetime;
+    }
+  }
+  return Object.entries(map)
+    .map(([k, v]) => {
+      const [name, proj] = k.split('\0');
+      return [name, proj, v.calls, v.sids.size, v.lastUsed];
+    })
+    .sort((a, b) => b[2] - a[2]);
+}
+
+function updateSkillsTable(sessions) {
+  const i     = I18N[lang];
+  const rows  = aggrSkills(sessions);
+  const tbody = document.getElementById('tSkills-body');
+  tbody.replaceChildren();
+  if (!rows.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 5; td.className = 'empty-row'; td.textContent = i.no_skills;
+    tr.appendChild(td); tbody.appendChild(tr);
+    return;
+  }
+  for (const [name, proj, calls, uniq, lastUsed] of rows) {
+    const tr = document.createElement('tr');
+    [name, proj, String(calls), String(uniq), relativeTime(lastUsed)].forEach(text => {
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+}
+
+// ── Cost by project ───────────────────────────────────────────────────────────
+function aggrByProject(sessions) {
+  const map = {};
+  for (const s of sessions) {
+    const proj = s.project || 'unknown';
+    if (!map[proj]) map[proj] = { sessions: 0, tokens: 0, cost: 0, models: {} };
+    map[proj].sessions++;
+    map[proj].tokens += s.total_tokens || 0;
+    map[proj].cost   += s.estimated_cost || 0;
+    const m = s.primary_model || 'unknown';
+    map[proj].models[m] = (map[proj].models[m] || 0) + 1;
+  }
+  const totalCost = Object.values(map).reduce((a, v) => a + v.cost, 0);
+  return Object.entries(map)
+    .map(([proj, v]) => {
+      const topModel = Object.entries(v.models).sort((a, b) => b[1] - a[1])[0]?.[0] || 'unknown';
+      const pct = totalCost > 0 ? (v.cost / totalCost * 100) : 0;
+      return [proj, v.sessions, v.tokens, v.cost, pct, topModel];
+    })
+    .sort((a, b) => b[3] - a[3]);
+}
+
+function updateProjectTable(sessions) {
+  const rows  = aggrByProject(sessions);
+  const tbody = document.getElementById('tProj-body');
+  tbody.replaceChildren();
+  for (const [proj, sess, tokens, cost, pct, model] of rows) {
+    const tr = document.createElement('tr');
+    const tier = model.includes('opus') ? 'opus' : model.includes('haiku') ? 'haiku' : 'sonnet';
+    const cells = [
+      proj,
+      String(sess),
+      (tokens / 1000).toFixed(0) + 'k',
+      '$' + cost.toFixed(2),
+      pct.toFixed(1) + '%',
+    ];
+    cells.forEach(text => {
+      const td = document.createElement('td'); td.textContent = text; tr.appendChild(td);
+    });
+    const tdModel = document.createElement('td');
+    const tag = document.createElement('span');
+    tag.className = 'model-tag ' + tier;
+    tag.textContent = model;
+    tdModel.appendChild(tag);
+    tr.appendChild(tdModel);
+    tbody.appendChild(tr);
+  }
+}
+
 // ── Apply filters ─────────────────────────────────────────────────────────────
 function applyFilters() {
   const f    = filterSessions();
   const tips = computeTips(f);
   updateKPIs(f);
   updateCharts(f);
+  updateProjectTable(f);
   updateModelTable(f);
   updateSessionsTable(f);
+  updateSkillsTable(f);
   renderHeatmap(f);
   renderTips(f, tips);
   updateDateRangeLabel(f);
@@ -1304,8 +1442,10 @@ if (lang  !== 'es')   document.getElementById('btn-lang').textContent  = 'ES';
 const initial = filterSessions();
 initCharts(initial);
 updateKPIs(initial);
+updateProjectTable(initial);
 updateModelTable(initial);
 updateSessionsTable(initial);
+updateSkillsTable(initial);
 renderTips(initial);
 renderHeatmap(initial);
 updateDateRangeLabel(initial);
