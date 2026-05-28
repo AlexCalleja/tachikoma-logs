@@ -149,6 +149,21 @@ def test_sort_skills_table(dash):
     no_errors(errors)
 
 
+def test_sort_skills_last_used_changes_order(dash):
+    page, errors = dash
+    # Click Last Used (col 5) twice — rows must flip order if >1 distinct value
+    col = page.locator("#tSkills th:nth-child(5)")
+    rows = page.locator("#tSkills-body tr")
+    if rows.count() < 2:
+        pytest.skip("not enough rows to verify sort order")
+    col.click()
+    first_asc = page.locator("#tSkills-body tr:first-child td:last-child").inner_text()
+    col.click()
+    first_desc = page.locator("#tSkills-body tr:first-child td:last-child").inner_text()
+    assert first_asc != first_desc, "Last Used sort did not change order"
+    no_errors(errors)
+
+
 def test_sort_model_table(dash):
     page, errors = dash
     page.locator("#tModel th").first.click()

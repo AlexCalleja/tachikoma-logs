@@ -1524,10 +1524,11 @@ function aggrSkills(sessions) {
     for (const [tool, count] of Object.entries(s.tools || {})) {
       if (!tool.startsWith('skill/') && !tool.startsWith('agent/')) continue;
       const key = tool + '\0' + (s.project || 'unknown');
-      if (!map[key]) map[key] = { calls: 0, sids: new Set(), lastUsed: '' };
+      if (!map[key]) map[key] = { calls: 0, sids: new Set(), lastUsed: 0 };
       map[key].calls += count;
       map[key].sids.add(s.session_id);
-      if (s.datetime > map[key].lastUsed) map[key].lastUsed = s.datetime;
+      const ts = new Date(s.datetime).getTime();
+      if (ts > map[key].lastUsed) map[key].lastUsed = ts;
     }
   }
   return Object.entries(map)
