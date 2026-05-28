@@ -40,8 +40,5 @@ jobs:
       - name: Install Playwright browser
         run: playwright install --with-deps chromium
 
-      - name: Generate dashboard
-        run: python generate.py
-
       - name: E2E tests
         run: python -m pytest tests/test_e2e.py -v
