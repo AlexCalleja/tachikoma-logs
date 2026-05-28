@@ -615,9 +615,10 @@ const CAT_COLORS = {
 };
 
 function categorizeSession(tools) {
-  const total = Object.values(tools).reduce((a, b) => a + b, 0);
+  const t = Object.fromEntries(Object.entries(tools).filter(([k]) => !k.startsWith('skill/') && !k.startsWith('agent/')));
+  const total = Object.values(t).reduce((a, b) => a + b, 0);
   if (total === 0) return 'conversation';
-  const sum = (...names) => names.reduce((a, n) => a + (tools[n] || 0), 0);
+  const sum = (...names) => names.reduce((a, n) => a + (t[n] || 0), 0);
   const web   = sum('WebSearch', 'WebFetch');
   const bash  = sum('Bash', 'PowerShell');
   const edits = sum('Edit', 'Write', 'NotebookEdit');
@@ -728,7 +729,7 @@ function initCharts(sessions) {
     options:{
       indexAxis:'y', responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false},
-        tooltip:{callbacks:{afterLabel:ctx=>['sessions: '+proj[ctx.dataIndex][1].sessions,'cost: $'+proj[ctx.dataIndex][1].cost.toFixed(2)]}}},
+        tooltip:{callbacks:{afterLabel:ctx=>['sessions: '+proj[ctx.dataIndex][1],'cost: $'+proj[ctx.dataIndex][3].toFixed(2)]}}},
       scales:{x:{grid:GRID,ticks:TICKS},y:{grid:{display:false},ticks:{...TICKS,font:{size:11}}}},
     },
   });
@@ -807,7 +808,7 @@ function _setBar(chart, labels, data, bg) {
   const ds = chart.data.datasets[0];
   chart.data.labels.splice(0, chart.data.labels.length, ...labels);
   ds.data.splice(0, ds.data.length, ...data);
-  if (bg) ds.backgroundColor = bg;
+  if (bg && bg.length) ds.backgroundColor = bg;
   chart.update('none');
 }
 
@@ -834,8 +835,7 @@ function updateCharts(sessions) {
   const mKeys  = Object.keys(mCount);
   _setBar(charts.model, mKeys, mKeys.map(m=>mCount[m].sessions), mKeys.map(m=>MODEL_COLORS[m]||'#7d8590'));
 
-  charts.dur.data.datasets[0].data = aggrDuration(sessions);
-  charts.dur.update();
+  _setBar(charts.dur, DUR_LABELS, aggrDuration(sessions), null);
 
   const entryMap = aggrByField(sessions, 'entrypoint');
   _setBar(charts.entrypoint, Object.keys(entryMap), Object.values(entryMap), PALETTE.slice(0, Object.keys(entryMap).length));
@@ -875,12 +875,10 @@ function updateChartLabels(sessions) {
   charts.dur.update();
   const catI3   = I18N[lang].categories;
   const catMap3 = aggrByCategory(sessions);
-  const ds3     = charts.category.data.datasets[0];
-  charts.category.data.labels.splice(0, charts.category.data.labels.length,
-    ...Object.keys(catMap3).map(k => catI3[k] || k));
-  ds3.data.splice(0, ds3.data.length, ...Object.values(catMap3));
-  ds3.backgroundColor = Object.keys(catMap3).map(k => CAT_COLORS[k] || '#888');
-  charts.category.update('none');
+  _setBar(charts.category,
+    Object.keys(catMap3).map(k => catI3[k] || k),
+    Object.values(catMap3),
+    Object.keys(catMap3).map(k => CAT_COLORS[k] || '#888'));
 }
 
 // ── Tables ────────────────────────────────────────────────────────────────────
@@ -939,7 +937,9 @@ function sortTbl(id, col) {
     return st.asc ? cmp : -cmp;
   });
   tblData[id] = rows;
-  if (id === 'tSessions') { renderSessionsBody(); } else { renderTblBody(id, rows); }
+  if (id === 'tSessions') { renderSessionsBody(); }
+  else if (id === 'tProj') { renderProjBody(); }
+  else { renderTblBody(id, rows); }
   document.querySelectorAll('#'+id+' th').forEach((th,ci) => {
     th.classList.remove('sort-asc','sort-desc');
     if (ci===col) th.classList.add(st.asc?'sort-asc':'sort-desc');
@@ -1384,23 +1384,14 @@ function aggrByProject(sessions) {
     .sort((a, b) => b[3] - a[3]);
 }
 
-function updateProjectTable(sessions) {
-  const rows  = aggrByProject(sessions);
+function renderProjBody() {
   const tbody = document.getElementById('tProj-body');
   tbody.replaceChildren();
-  for (const [proj, sess, tokens, cost, pct, model] of rows) {
+  for (const [proj, sess, tokens, cost, pct, model] of (tblData['tProj'] || [])) {
     const tr = document.createElement('tr');
-    const tier = model.includes('opus') ? 'opus' : model.includes('haiku') ? 'haiku' : 'sonnet';
-    const cells = [
-      proj,
-      String(sess),
-      (tokens / 1000).toFixed(0) + 'k',
-      '$' + cost.toFixed(2),
-      pct.toFixed(1) + '%',
-    ];
-    cells.forEach(text => {
-      const td = document.createElement('td'); td.textContent = text; tr.appendChild(td);
-    });
+    const tier = model === 'mixed' ? 'mixed' : model.includes('opus') ? 'opus' : model.includes('haiku') ? 'haiku' : 'sonnet';
+    const cells = [proj, String(sess), (tokens/1000).toFixed(0)+'k', '$'+cost.toFixed(2), pct.toFixed(1)+'%'];
+    cells.forEach(text => { const td = document.createElement('td'); td.textContent = text; tr.appendChild(td); });
     const tdModel = document.createElement('td');
     const tag = document.createElement('span');
     tag.className = 'model-tag ' + tier;
@@ -1409,6 +1400,11 @@ function updateProjectTable(sessions) {
     tr.appendChild(tdModel);
     tbody.appendChild(tr);
   }
+}
+
+function updateProjectTable(sessions) {
+  tblData['tProj'] = aggrByProject(sessions);
+  renderProjBody();
 }
 
 // ── Apply filters ─────────────────────────────────────────────────────────────
