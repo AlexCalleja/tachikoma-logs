@@ -5,6 +5,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-05-28
+
+### Added
+- `cCatProj`: stacked horizontal bar showing session category mix per project (coding / exploration / automation / research / conversation / mixed), top 8 projects by session count, i18n labels
+- Skills & Agents table: sortable columns (all 5 headers — skill/agent, project, calls, sessions, last used)
+- Playwright end-to-end tests (`tests/test_e2e.py`): JS error detection on load, filter buttons, model checkboxes, all sortable tables, language and theme toggles; CI split into `unit` + `e2e` jobs
+
+### Changed
+- `cDur`: replaced single aggregate bar with stacked bar by model (sonnet/opus/haiku/mixed per duration bucket) — all models now visible
+- `cEntrypoint`, `cPerm`, `cStopReason`, `cCategory`: converted back to doughnut with bottom legend
+- Usage tips: replaced colored backgrounds with `var(--surface)` + 3px colored left border (orange warn / blue info / green ok), consistent with stat card style; full border transitions to level color on hover
+
+### Fixed
+- Skills table "Last used" column stayed in previous language after ES/EN toggle — `renderSkillsBody()` now called from `setLang`
+- `barOpts` undefined crashed `charts.tools` and `charts.catproj` init after radar refactor
+
+## [0.6.0] — 2026-05-28
+
+### Added
+- `skill/*` and `agent/*` tool tracking: Skill/Agent tool calls expand to `skill/<name>` / `agent/<subagent_type>` in session tools dict
+- Session categorization: 6 types (coding / exploration / automation / research / conversation / mixed) based on tool usage ratios; dedicated `cCategory` chart
+- Skills & Agents table per project: calls, projects, unique sessions, last used columns
+- Cost by project table: sessions, tokens, cost, % total, primary model (sortable)
+- `aggrDurStacked`, `aggrCatByProject`, `aggrModelProfile`, `aggrCacheTrend` aggregation helpers
+- `_setBar`, `_setPolar` update helpers for reliable Chart.js reactivity (splice in-place + `update('none')`)
+- Visual polish: blinking cursor on h1, `>` prefix on section titles, radial gradient background, threshold-based KPI border colors, orchestrated load animations
+
+### Changed
+- 6 doughnut charts replaced with horizontal bar charts (`indexAxis:'y'`) with `maintainAspectRatio:false` + `.ch-wrap` wrapper for correct sizing
+- Streaming deduplication: keep LAST chunk per message ID (not first) — first chunk lacks complete tool_use blocks and token counts
+
+### Fixed
+- 7 bugs from post-release code review: `initCharts` proj tooltip crash (stale object API), `sortTbl('tProj')` crash (`tblData` not populated), `categorizeSession` over-classifying sessions with `skill/*`/`agent/*` tools as mixed, `_setBar` stripping colors on empty filter, mixed model tag showing wrong CSS class, `updateChartLabels` diverging from `_setBar`, `charts.dur` inconsistent update path
+- 29 unit tests (+ 2 new for skill/agent tool name expansion)
+
 ## [0.5.0] — 2026-05-27
 
 ### Added
