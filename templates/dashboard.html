@@ -35,6 +35,8 @@
       font-size:1.05rem; font-weight:600; margin-bottom:.2rem; letter-spacing:-.01em;
     }
     h1::before { content:'$ '; color:var(--accent) }
+    h1::after  { content:'▋'; color:var(--accent); margin-left:.15em; animation:blink 1s step-end infinite }
+    @keyframes blink { 50% { opacity:0 } }
     .meta { font-size:.67rem; color:var(--muted); font-family:'JetBrains Mono',monospace; margin-bottom:1.25rem; letter-spacing:.01em }
 
     /* ── Filters ── */
@@ -77,6 +79,7 @@
 
     /* ── Tips ── */
     .section-title { font-size:.57rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; margin-bottom:.7rem; font-family:'JetBrains Mono',monospace }
+    .section-title::before { content:'> '; color:var(--accent) }
     .tips-section { margin-bottom:1.25rem }
     .tip { border-radius:7px; padding:.8rem 1.1rem; margin-bottom:.5rem; display:flex; gap:.8rem; align-items:flex-start }
     .tip.warn { background:var(--warn-bg); border:1px solid var(--warn-border) }
@@ -137,8 +140,8 @@
     .filters          { animation:fadeUp .35s ease both; animation-delay:.04s }
     .stats            { animation:fadeUp .35s ease both; animation-delay:.1s }
     .grid             { animation:fadeUp .35s ease both; animation-delay:.17s }
-    .tips-section     { animation:fadeUp .35s ease both; animation-delay:.24s }
-    .tables-section   { animation:fadeUp .35s ease both; animation-delay:.31s }
+    .tables-section   { animation:fadeUp .35s ease both; animation-delay:.24s }
+    .tips-section     { animation:fadeUp .35s ease both; animation-delay:.31s }
     .claude-section   { animation:fadeUp .35s ease both; animation-delay:.37s }
 
     /* ── Responsive grid ── */
@@ -219,11 +222,6 @@
     <div class="card full"><h2 data-i18n="chart_heatmap"></h2><div id="heatmap-container"></div></div>
   </div>
 
-  <div class="tips-section">
-    <div class="section-title" data-i18n="tips_title"></div>
-    <div id="tips-container"></div>
-  </div>
-
   <div class="tables-section">
     <div class="card" style="margin-bottom:.85rem">
       <h2 data-i18n="tbl_model_title"></h2>
@@ -258,6 +256,11 @@
       </div>
       <button id="btn-show-all" class="filter-btn" style="margin-top:.75rem;display:none" onclick="toggleAllSessions()"></button>
     </div>
+  </div>
+
+  <div class="tips-section">
+    <div class="section-title" data-i18n="tips_title"></div>
+    <div id="tips-container"></div>
   </div>
 
   <div class="claude-section">
