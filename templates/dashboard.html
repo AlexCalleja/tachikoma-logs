@@ -71,7 +71,11 @@
       padding:.9rem 1.1rem; border-left:2px solid var(--accent);
       transition:border-color .2s, box-shadow .2s;
     }
-    .stat:hover { box-shadow:0 0 0 1px var(--accent) inset }
+    .stat:hover              { box-shadow:0 0 0 1px var(--accent) inset }
+    .stat.kpi-ok             { border-left-color:var(--green) }
+    .stat.kpi-warn           { border-left-color:var(--orange) }
+    .stat.kpi-ok:hover       { box-shadow:0 0 0 1px var(--green) inset }
+    .stat.kpi-warn:hover     { box-shadow:0 0 0 1px var(--orange) inset }
     .stat .lbl { font-size:.57rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; font-weight:500 }
     .stat .val { font-size:1.45rem; font-weight:600; margin-top:.25rem; font-family:'JetBrains Mono',monospace; letter-spacing:-.03em }
     .stat .sub { font-size:.57rem; color:var(--muted); margin-top:.12rem; font-family:'JetBrains Mono',monospace }
@@ -570,9 +574,12 @@ function aggrTools(sessions) {
 
 // ── KPIs ──────────────────────────────────────────────────────────────────────
 function updateKPIs(sessions) {
+  const costEl = document.getElementById('s-cost');
+  const sessEl = document.getElementById('s-sessions');
   if (!sessions.length) {
     ['s-sessions','s-tokens','s-cost','s-projects','s-duration'].forEach(id =>
       document.getElementById(id).textContent = '—');
+    [costEl, sessEl].forEach(el => el.closest('.stat').classList.remove('kpi-ok','kpi-warn'));
     return;
   }
   const totalTokens = sessions.reduce((a,s) => a + s.total_tokens, 0);
@@ -581,9 +588,17 @@ function updateKPIs(sessions) {
   const avgDur      = sessions.reduce((a,s) => a + s.duration_min, 0) / sessions.length;
   document.getElementById('s-sessions').textContent = sessions.length.toLocaleString();
   document.getElementById('s-tokens').textContent   = (totalTokens / 1000).toFixed(0) + 'k';
-  document.getElementById('s-cost').textContent     = '$' + totalCost.toFixed(2);
+  costEl.textContent     = '$' + totalCost.toFixed(2);
   document.getElementById('s-projects').textContent = projects;
   document.getElementById('s-duration').textContent = avgDur.toFixed(1) + ' min';
+
+  const setKpiColor = (el, ok, warn) => {
+    const stat = el.closest('.stat');
+    stat.classList.toggle('kpi-ok',   ok);
+    stat.classList.toggle('kpi-warn', warn);
+  };
+  setKpiColor(costEl, totalCost < 5, totalCost > 20);
+  setKpiColor(sessEl, sessions.length > 20, sessions.length < 5);
 }
 
 // ── Charts ────────────────────────────────────────────────────────────────────
