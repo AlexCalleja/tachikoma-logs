@@ -69,7 +69,7 @@
     .stat {
       background:var(--surface); border:1px solid var(--border); border-radius:8px;
       padding:.9rem 1.1rem; border-left:2px solid var(--accent);
-      transition:border-color .2s, box-shadow .2s;
+      transition:border-color .2s, box-shadow .2s; position:relative;
     }
     .stat:hover              { box-shadow:0 0 0 1px var(--accent) inset }
     .stat.kpi-ok             { border-left-color:var(--green) }
@@ -82,10 +82,14 @@
 
     /* ── Charts ── */
     .grid { display:grid; grid-template-columns:1fr 1fr; gap:.85rem; margin-bottom:1.25rem }
-    .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.25rem; transition:border-color .2s }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.25rem; transition:border-color .2s; position:relative }
     .card:hover { border-color:rgba(6,182,212,.3) }
     .card.full { grid-column:1/-1 }
     .card h2 { font-size:.57rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; margin-bottom:1rem; font-family:'JetBrains Mono',monospace }
+    .info-btn { position:absolute; top:.55rem; right:.65rem; background:none; border:1px solid transparent; color:var(--muted); cursor:pointer; font-size:.6rem; padding:.15rem .35rem; border-radius:4px; font-family:'JetBrains Mono',monospace; transition:color .15s,border-color .15s; line-height:1; z-index:1 }
+    .info-btn:hover { color:var(--accent); border-color:var(--border) }
+    .info-btn.active { color:var(--accent); border-color:var(--accent) }
+    .info-panel { font-size:.68rem; color:var(--muted); line-height:1.6; padding:.5rem .75rem; margin-bottom:.75rem; background:var(--bg); border-radius:5px; border-left:2px solid var(--border) }
     .ch-wrap { position:relative }
     .ch-wrap canvas { position:absolute; inset:0 }
 
@@ -213,6 +217,7 @@
     </div>
     <span id="date-range-label" style="font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-left:.25rem"></span>
     <div class="toggle-group">
+      <button class="filter-btn" id="btn-info"  onclick="toggleAllInfo()">?</button>
       <button class="filter-btn" id="btn-lang"  onclick="toggleLang()">EN</button>
       <button class="filter-btn" id="btn-theme" onclick="toggleTheme()">☀</button>
     </div>
@@ -412,6 +417,28 @@ const I18N = {
     btn_copied:         '¡Copiado!',
     btn_preview:        'Ver prompt',
     btn_preview_hide:   'Ocultar',
+    info: {
+      kpi_sessions:       'Total de conversaciones con Claude Code en el período. Una sesión = un archivo JSONL en ~/.claude/projects/.',
+      kpi_tokens:         'Suma de tokens input + output en todas las sesiones. Los tokens de cache se muestran en la gráfica de tiempo.',
+      kpi_cost:           'Estimación basada en precios de Anthropic (actualizado 2026-05). Puede diferir del cobro real si los precios cambiaron.',
+      kpi_projects:       'Proyectos distintos con actividad. Se detecta por el nombre del directorio de trabajo (cwd) de cada sesión.',
+      kpi_duration:       'Promedio del tiempo entre el primer y último mensaje de cada sesión. No incluye tiempo de inactividad dentro de la sesión.',
+      chart_time:         'Tokens por día separados por tipo (input, output, cache read, cache create). El eje derecho (rojo) muestra el costo en USD.',
+      chart_proj:         'Top 10 proyectos por tokens totales. El tooltip al hacer hover muestra el número de sesiones y el costo en USD.',
+      chart_model:        'Distribución de sesiones por modelo principal. Mixed = sesión sin modelo dominante (opus + otros).',
+      chart_dur:          'Distribución de duración de sesiones por rango de tiempo, apiladas por modelo. Permite comparar si Opus tiende a sesiones más largas que Haiku.',
+      chart_entrypoint:   'Cómo se inició cada sesión: cli (terminal), ide (extensión VS Code/JetBrains), u otros puntos de entrada.',
+      chart_perm:         'Modo de permisos más frecuente por sesión. default requiere confirmación para acciones peligrosas; bypassPermissions ejecuta sin preguntar.',
+      chart_stopreason:   'Por qué terminó la sesión. end_turn = terminó naturalmente; max_tokens = alcanzó el límite de contexto (ver consejos de uso).',
+      chart_category:     'Tipo de sesión según herramientas usadas: coding (edit/write ≥20%), exploration (read/glob ≥50%), automation (bash ≥50%), research (websearch), conversation (sin tools), mixed.',
+      chart_tools:        'Top 10 herramientas por llamadas totales. skill/* y agent/* aparecen con su nombre específico (ej. skill/verify, agent/code-reviewer).',
+      chart_catproj:      'Porcentaje de cada tipo de sesión por proyecto (top 8 por número de sesiones). Muestra el perfil de trabajo de cada repo.',
+      chart_skills:       'Skills y agentes invocados agrupados por proyecto, con llamadas totales, sesiones únicas donde se usó, y fecha del último uso.',
+      chart_heatmap:      'Actividad por hora del día y día de la semana. Cada celda = número de sesiones iniciadas en esa franja horaria.',
+      tbl_proj_title:     'Costo y uso por proyecto en el período, ordenable por cualquier columna. % total = porcentaje del costo total del período seleccionado.',
+      tbl_model_title:    'Desglose de tokens y costo por modelo. Cache read y cache create se muestran por separado para ver el impacto del caching.',
+      tbl_sessions_title: 'Historial de sesiones con métricas individuales. Haz click en los encabezados para ordenar por cualquier columna.',
+    },
   },
   en: {
     meta_generated:     'generated',
@@ -487,6 +514,28 @@ const I18N = {
     btn_copied:         'Copied!',
     btn_preview:        'Preview prompt',
     btn_preview_hide:   'Hide',
+    info: {
+      kpi_sessions:       'Total conversations with Claude Code in the selected period. One session = one JSONL file in ~/.claude/projects/.',
+      kpi_tokens:         'Input + output tokens across all sessions. Cache tokens are shown separately in the time chart.',
+      kpi_cost:           'Estimate based on Anthropic pricing (updated 2026-05). May differ from actual charges if prices changed.',
+      kpi_projects:       'Distinct projects with activity. Detected from the working directory (cwd) of each session.',
+      kpi_duration:       'Average time between first and last message per session. Does not include idle time within a session.',
+      chart_time:         'Tokens per day split by type (input, output, cache read, cache create). Right axis (red) shows USD cost.',
+      chart_proj:         'Top 10 projects by total tokens. Hover a bar to see session count and USD cost in the tooltip.',
+      chart_model:        'Session distribution by primary model. Mixed = session with no dominant model (opus + others).',
+      chart_dur:          'Session duration distribution stacked by model. Shows whether Opus tends toward longer sessions than Haiku.',
+      chart_entrypoint:   'How each session was started: cli (terminal), ide (VS Code/JetBrains extension), or other entry points.',
+      chart_perm:         'Most frequent permission mode per session. default asks before dangerous actions; bypassPermissions runs without prompting.',
+      chart_stopreason:   'Why the session ended. end_turn = finished naturally; max_tokens = hit context limit (see usage tips).',
+      chart_category:     'Session type by tool usage: coding (edit/write ≥20%), exploration (read/glob ≥50%), automation (bash ≥50%), research (websearch), conversation (no tools), mixed.',
+      chart_tools:        'Top 10 tools by total calls. skill/* and agent/* appear with their specific name (e.g. skill/verify, agent/code-reviewer).',
+      chart_catproj:      'Percentage of each session type per project (top 8 by sessions). Shows the work profile of each repository.',
+      chart_skills:       'Skills and agents invoked grouped by project, with total calls, unique sessions where used, and last used date.',
+      chart_heatmap:      'Activity by hour of day and day of week. Each cell = number of sessions started in that time slot.',
+      tbl_proj_title:     'Cost and usage by project in the period, sortable by any column. % total = share of total cost in the selected period.',
+      tbl_model_title:    'Token and cost breakdown by model. Cache read and cache create are shown separately to measure caching impact.',
+      tbl_sessions_title: 'Session history with individual metrics. Click any column header to sort.',
+    },
   },
 };
 
@@ -565,6 +614,60 @@ function applyLang() {
   });
   document.getElementById('btn-copy').textContent    = i.btn_copy;
   document.getElementById('btn-preview').textContent = showPromptPreview ? i.btn_preview_hide : i.btn_preview;
+  updateInfoTexts();
+}
+
+// ── Info panels ───────────────────────────────────────────────────────────────
+let _infoAll = false;
+
+function updateInfoTexts() {
+  const info = I18N[lang].info || {};
+  document.querySelectorAll('.info-panel[data-info]').forEach(el => {
+    const text = info[el.dataset.info] || '';
+    el.textContent = text;
+    const btn = el.closest('.card, .stat')?.querySelector('.info-btn');
+    if (btn) btn.style.display = text ? '' : 'none';
+  });
+}
+
+function toggleInfo(container) {
+  const panel = container.querySelector('.info-panel');
+  const btn   = container.querySelector('.info-btn');
+  panel.hidden = !panel.hidden;
+  btn.classList.toggle('active', !panel.hidden);
+}
+
+function toggleAllInfo() {
+  _infoAll = !_infoAll;
+  document.querySelectorAll('.info-panel').forEach(p => { p.hidden = !_infoAll; });
+  document.querySelectorAll('.info-btn').forEach(b => b.classList.toggle('active', _infoAll));
+  document.getElementById('btn-info').classList.toggle('active', _infoAll);
+}
+
+function initInfoPanels() {
+  document.querySelectorAll('.card h2[data-i18n]').forEach(h2 => {
+    const card = h2.closest('.card');
+    _addInfoPanel(card, h2, h2.dataset.i18n);
+  });
+  document.querySelectorAll('.stat').forEach(stat => {
+    const lbl = stat.querySelector('.lbl[data-i18n]');
+    if (lbl) _addInfoPanel(stat, lbl, lbl.dataset.i18n);
+  });
+  updateInfoTexts();
+}
+
+function _addInfoPanel(container, anchor, key) {
+  const btn = document.createElement('button');
+  btn.className = 'info-btn';
+  btn.textContent = 'ℹ';
+  btn.onclick = () => toggleInfo(container);
+  container.appendChild(btn);
+
+  const panel = document.createElement('div');
+  panel.className = 'info-panel';
+  panel.hidden = true;
+  panel.dataset.info = key;
+  anchor.insertAdjacentElement('afterend', panel);
 }
 
 // ── Aggregation helpers ───────────────────────────────────────────────────────
@@ -1697,6 +1800,7 @@ renderTips(initial);
 renderHeatmap(initial);
 updateDateRangeLabel(initial);
 applyLang();
+initInfoPanels();
 </script>
 </body>
 </html>
