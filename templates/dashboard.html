@@ -25,8 +25,15 @@
       --ok-bg:rgba(13,127,92,.08);     --ok-border:rgba(13,127,92,.28);
     }
     * { box-sizing:border-box; margin:0; padding:0 }
+    html {
+      background:var(--bg);
+      background-image:radial-gradient(ellipse 80% 50% at 50% -10%, rgba(79,158,255,.07), transparent);
+    }
+    [data-theme="light"] {
+      background-image:radial-gradient(ellipse 80% 50% at 50% -10%, rgba(21,101,192,.06), transparent);
+    }
     body {
-      background:var(--bg); color:var(--text);
+      background:transparent; color:var(--text);
       font-family:'Sora','DM Sans',sans-serif;
       padding:2rem; max-width:1200px; margin:0 auto; font-size:.875rem;
     }
