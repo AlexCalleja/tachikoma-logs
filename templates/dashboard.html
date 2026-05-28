@@ -227,15 +227,16 @@
     <div class="card full"><h2 data-i18n="chart_time"></h2><div class="ch-wrap" style="height:240px"><canvas id="cTime"></canvas></div></div>
     <div class="card"><h2 data-i18n="chart_proj"></h2><div class="ch-wrap" style="height:210px"><canvas id="cProj"></canvas></div></div>
     <div class="card"><h2 data-i18n="chart_model"></h2><div class="ch-wrap" style="height:120px"><canvas id="cModel"></canvas></div></div>
-    <div class="card full"><h2 data-i18n="chart_dur"></h2><div class="ch-wrap" style="height:140px"><canvas id="cDur"></canvas></div></div>
+    <div class="card full"><h2 data-i18n="chart_dur"></h2><div class="ch-wrap" style="height:180px"><canvas id="cDur"></canvas></div></div>
   </div>
 
   <div class="grid grid-4">
-    <div class="card"><h2 data-i18n="chart_entrypoint"></h2><div class="ch-wrap" style="height:100px"><canvas id="cEntrypoint"></canvas></div></div>
-    <div class="card"><h2 data-i18n="chart_perm"></h2><div class="ch-wrap" style="height:100px"><canvas id="cPerm"></canvas></div></div>
-    <div class="card"><h2 data-i18n="chart_stopreason"></h2><div class="ch-wrap" style="height:120px"><canvas id="cStopReason"></canvas></div></div>
-    <div class="card"><h2 data-i18n="chart_category"></h2><div class="ch-wrap" style="height:150px"><canvas id="cCategory"></canvas></div></div>
+    <div class="card"><h2 data-i18n="chart_entrypoint"></h2><div class="ch-wrap" style="height:170px"><canvas id="cEntrypoint"></canvas></div></div>
+    <div class="card"><h2 data-i18n="chart_perm"></h2><div class="ch-wrap" style="height:170px"><canvas id="cPerm"></canvas></div></div>
+    <div class="card"><h2 data-i18n="chart_stopreason"></h2><div class="ch-wrap" style="height:170px"><canvas id="cStopReason"></canvas></div></div>
+    <div class="card"><h2 data-i18n="chart_category"></h2><div class="ch-wrap" style="height:170px"><canvas id="cCategory"></canvas></div></div>
     <div class="card full"><h2 data-i18n="chart_tools"></h2><div class="ch-wrap" style="height:280px"><canvas id="cTools"></canvas></div></div>
+    <div class="card full"><h2 data-i18n="chart_catproj"></h2><div class="ch-wrap" style="height:260px"><canvas id="cCatProj"></canvas></div></div>
     <div class="card full">
       <h2 data-i18n="chart_skills"></h2>
       <table class="data-table" id="tSkills">
@@ -326,7 +327,8 @@
 <script>
 const ALL_SESSIONS = __SESSIONS_JSON__;
 
-const MODEL_COLORS = { sonnet:'#4f9eff', opus:'#a78bfa', haiku:'#34d399', mixed:'#fb923c' };
+const MODEL_COLORS    = { sonnet:'#4f9eff', opus:'#a78bfa', haiku:'#34d399', mixed:'#fb923c' };
+const MODEL_COLORS_BG = { sonnet:'rgba(79,158,255,.15)', opus:'rgba(167,139,250,.15)', haiku:'rgba(52,211,153,.15)', mixed:'rgba(251,146,60,.15)' };
 const PALETTE = ['#4f9eff','#34d399','#fb923c','#a78bfa','#ff5c73','#6ab0ff','#e3b341','#c084fc','#fda4af','#4ade80'];
 const DUR_EDGES  = [0,5,15,30,60,120,9999];
 const DUR_LABELS = ['<5 min','5-15 min','15-30 min','30-60 min','1-2 h','>2 h'];
@@ -345,9 +347,14 @@ const I18N = {
     sub_cost:           'USD aproximado',
     sub_duration:       'por sesion',
     chart_time:         'Tokens por dia (input / output / cache)',
+    chart_line:         'Costo diario + tasa de cache',
     chart_proj:         'Top proyectos (tokens)',
+    chart_bubble:       'Proyectos — sesiones vs costo',
     chart_model:        'Modelo primario por sesion',
-    chart_dur:          'Distribucion de duracion de sesiones',
+    chart_radar:        'Perfil de sesion por modelo',
+    chart_dur:          'Distribucion de duracion por modelo',
+    chart_catproj:      'Tipo de sesion por proyecto',
+    radar_labels:       ['Input','Output','Cache','Duracion','Mensajes','Tools'],
     chart_entrypoint:   'Entrypoint por sesion',
     chart_perm:         'Modo de permisos',
     chart_stopreason:   'Razon de fin de sesion',
@@ -415,9 +422,14 @@ const I18N = {
     sub_cost:           'approx. USD',
     sub_duration:       'per session',
     chart_time:         'Tokens per day (input / output / cache)',
+    chart_line:         'Daily cost + cache hit rate',
     chart_proj:         'Top projects (tokens)',
+    chart_bubble:       'Projects — sessions vs cost',
     chart_model:        'Primary model per session',
-    chart_dur:          'Session duration distribution',
+    chart_radar:        'Session profile by model',
+    chart_dur:          'Session duration by model',
+    chart_catproj:      'Session type by project',
+    radar_labels:       ['Input','Output','Cache','Duration','Messages','Tools'],
     chart_entrypoint:   'Entrypoint by session',
     chart_perm:         'Permission mode',
     chart_stopreason:   'Session end reason',
@@ -596,6 +608,145 @@ function aggrDuration(sessions) {
   return counts;
 }
 
+function aggrCacheTrend(sessions) {
+  const map = {};
+  for (const s of sessions) {
+    if (!map[s.date]) map[s.date] = {cost:0, cache:0, input:0};
+    map[s.date].cost  += s.estimated_cost || 0;
+    map[s.date].cache += s.cache_read     || 0;
+    map[s.date].input += s.input_tokens   || 0;
+  }
+  const dates = Object.keys(map).sort();
+  return {
+    dates,
+    cost:      dates.map(d => +map[d].cost.toFixed(3)),
+    cacheRate: dates.map(d => {
+      const total = map[d].input + map[d].cache;
+      return total > 0 ? +(map[d].cache / total * 100).toFixed(1) : 0;
+    }),
+  };
+}
+
+function aggrBubble(sessions) {
+  const map = {};
+  for (const s of sessions) {
+    const p = s.project || 'unknown';
+    if (!map[p]) map[p] = {sessions:0, cost:0, tokens:0, models:{}};
+    map[p].sessions++;
+    map[p].cost   += s.estimated_cost || 0;
+    map[p].tokens += s.total_tokens   || 0;
+    const m = s.primary_model || 'unknown';
+    map[p].models[m] = (map[p].models[m] || 0) + 1;
+  }
+  const byModel = {};
+  for (const [proj, v] of Object.entries(map)) {
+    const topModel = Object.entries(v.models).sort((a,b)=>b[1]-a[1])[0]?.[0] || 'unknown';
+    const r = Math.max(5, Math.min(28, Math.sqrt(v.tokens / 800)));
+    if (!byModel[topModel]) byModel[topModel] = [];
+    byModel[topModel].push({ x:v.sessions, y:+v.cost.toFixed(2), r, project:proj });
+  }
+  return Object.entries(byModel).map(([m, pts]) => ({
+    label: m,
+    data: pts,
+    backgroundColor: (MODEL_COLORS_BG[m] || 'rgba(128,128,128,.15)').replace('.15)', '.6)'),
+    borderColor: MODEL_COLORS[m] || '#7d8590',
+    borderWidth: 1,
+  }));
+}
+
+function aggrModelProfile(sessions) {
+  const MODELS = ['sonnet','opus','haiku'];
+  const map = {};
+  MODELS.forEach(m => map[m] = {n:0,input:0,output:0,cache:0,dur:0,msgs:0,tools:0});
+  for (const s of sessions) {
+    const m = s.primary_model;
+    if (!map[m]) continue;
+    map[m].n++;
+    map[m].input  += s.input_tokens  || 0;
+    map[m].output += s.output_tokens || 0;
+    map[m].cache  += s.cache_read    || 0;
+    map[m].dur    += s.duration_min  || 0;
+    map[m].msgs   += s.message_count || 0;
+    map[m].tools  += Object.values(s.tools || {}).reduce((a,b)=>a+b,0);
+  }
+  const active = MODELS.filter(m => map[m].n > 0);
+  if (!active.length) return [];
+  const avgs = active.map(m => {
+    const n = map[m].n;
+    return {model:m, raw:[map[m].input/n,map[m].output/n,map[m].cache/n,map[m].dur/n,map[m].msgs/n,map[m].tools/n]};
+  });
+  const maxes = avgs[0].raw.map((_,i) => Math.max(...avgs.map(a=>a.raw[i]))||1);
+  return avgs.map(a => ({model:a.model, data:a.raw.map((v,i)=>+(v/maxes[i]*100).toFixed(1))}));
+}
+
+function aggrDurStacked(sessions) {
+  const present = {};
+  for (const s of sessions) { if (s.primary_model) present[s.primary_model] = true; }
+  const models = ['sonnet','opus','haiku','mixed'].filter(m => present[m]);
+  const map = {};
+  models.forEach(m => map[m] = new Array(DUR_LABELS.length).fill(0));
+  for (const s of sessions) {
+    const m = s.primary_model;
+    if (!map[m]) continue;
+    for (let i = 0; i < DUR_EDGES.length - 1; i++) {
+      if (s.duration_min >= DUR_EDGES[i] && s.duration_min < DUR_EDGES[i+1]) { map[m][i]++; break; }
+    }
+  }
+  return models.map(m => ({
+    label: m,
+    data: map[m],
+    backgroundColor: (MODEL_COLORS_BG[m]||'rgba(128,128,128,.15)').replace('.15)','.55)'),
+    borderColor: MODEL_COLORS[m]||'#7d8590',
+    borderWidth:1, borderRadius:2,
+  }));
+}
+
+function aggrDurByModel(sessions) {
+  const MODELS = ['sonnet','opus','haiku'];
+  const map = {};
+  MODELS.forEach(m => map[m] = new Array(DUR_LABELS.length).fill(0));
+  for (const s of sessions) {
+    const m = s.primary_model;
+    if (!map[m]) continue;
+    for (let i = 0; i < DUR_EDGES.length - 1; i++) {
+      if (s.duration_min >= DUR_EDGES[i] && s.duration_min < DUR_EDGES[i+1]) { map[m][i]++; break; }
+    }
+  }
+  return MODELS.filter(m => map[m].reduce((a,b)=>a+b,0) > 0).map(m => {
+    const total = map[m].reduce((a,b)=>a+b,0) || 1;
+    return {model:m, data:map[m].map(v=>+(v/total*100).toFixed(1))};
+  });
+}
+
+function aggrCatByProject(sessions) {
+  const CAT_ORDER = ['coding','exploration','automation','research','conversation','mixed'];
+  const map = {};
+  for (const s of sessions) {
+    if (s.project === 'temp') continue;
+    const p = s.project || 'unknown';
+    if (!map[p]) map[p] = {};
+    const cat = categorizeSession(s.tools || {});
+    map[p][cat] = (map[p][cat] || 0) + 1;
+  }
+  const topProjs = Object.entries(map)
+    .map(([p,cats]) => [p, Object.values(cats).reduce((a,b)=>a+b,0)])
+    .sort((a,b)=>b[1]-a[1]).slice(0,8).map(e=>e[0]);
+  return {
+    projects: topProjs,
+    datasets: CAT_ORDER.map(cat => ({
+      label: cat,
+      data: topProjs.map(p => {
+        const cats = map[p]||{};
+        const total = Object.values(cats).reduce((a,b)=>a+b,0)||1;
+        return +((cats[cat]||0)/total*100).toFixed(1);
+      }),
+      backgroundColor: (CAT_COLORS[cat]||'#888')+'bb',
+      borderColor: CAT_COLORS[cat]||'#888',
+      borderWidth: 0, borderRadius: 2,
+    })),
+  };
+}
+
 function aggrByField(sessions, field) {
   const map = {};
   for (const s of sessions) {
@@ -692,7 +843,6 @@ function initCharts(sessions) {
   const proj   = aggrByProject(sessions).sort((a,b)=>b[2]-a[2]).slice(0,10);
   const mCount = aggrByModel(sessions);
   const mKeys  = Object.keys(mCount);
-  const dur    = aggrDuration(sessions);
 
   charts.time = new Chart(document.getElementById('cTime'), {
     data: {
@@ -749,8 +899,8 @@ function initCharts(sessions) {
 
   charts.dur = new Chart(document.getElementById('cDur'), {
     type:'bar',
-    data:{labels:DUR_LABELS,datasets:[{label:i.kpi_sessions,data:dur,backgroundColor:'rgba(52,211,153,.4)',borderColor:'#34d399',borderWidth:1,borderRadius:3}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:GRID,ticks:TICKS},y:{grid:GRID,ticks:TICKS}}},
+    data:{labels:DUR_LABELS, datasets:aggrDurStacked(sessions)},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:6}}},scales:{x:{stacked:true,grid:GRID,ticks:TICKS},y:{stacked:true,grid:GRID,ticks:TICKS}}},
   });
 
   const entryMap   = aggrByField(sessions, 'entrypoint');
@@ -764,32 +914,35 @@ function initCharts(sessions) {
     scales:{x:{grid:GRID,ticks:TICKS},y:{grid:{display:false},ticks:{...TICKS,font:{size:11}}}},
   });
 
+  const doughnutOpts = () => ({
+    responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:8}}},
+  });
+
   charts.entrypoint = new Chart(document.getElementById('cEntrypoint'), {
-    type:'bar',
-    data:{labels:Object.keys(entryMap),datasets:[{data:Object.values(entryMap),backgroundColor:PALETTE,borderWidth:0,borderRadius:3}]},
-    options:barOpts(),
+    type:'doughnut',
+    data:{labels:Object.keys(entryMap),datasets:[{data:Object.values(entryMap),backgroundColor:PALETTE,borderWidth:0}]},
+    options:doughnutOpts(),
   });
 
   charts.perm = new Chart(document.getElementById('cPerm'), {
-    type:'bar',
-    data:{labels:Object.keys(permMap),datasets:[{data:Object.values(permMap),backgroundColor:PALETTE.slice(3),borderWidth:0,borderRadius:3}]},
-    options:barOpts(),
+    type:'doughnut',
+    data:{labels:Object.keys(permMap),datasets:[{data:Object.values(permMap),backgroundColor:PALETTE.slice(3),borderWidth:0}]},
+    options:doughnutOpts(),
   });
 
   charts.stopreason = new Chart(document.getElementById('cStopReason'), {
-    type:'bar',
-    data:{labels:Object.keys(stopMap),datasets:[{data:Object.values(stopMap),backgroundColor:['#34d399','#ff5c73','#e3b341','#a78bfa'],borderWidth:0,borderRadius:3}]},
-    options:barOpts(),
+    type:'doughnut',
+    data:{labels:Object.keys(stopMap),datasets:[{data:Object.values(stopMap),backgroundColor:['#34d399','#ff5c73','#e3b341','#a78bfa'],borderWidth:0}]},
+    options:doughnutOpts(),
   });
 
   const catMap  = aggrByCategory(sessions);
   const catI    = I18N[lang].categories;
-  const catLabels = Object.keys(catMap).map(k => catI[k] || k);
-  const catBg    = Object.keys(catMap).map(k => CAT_COLORS[k] || '#888');
   charts.category = new Chart(document.getElementById('cCategory'), {
-    type:'bar',
-    data:{labels:catLabels,datasets:[{data:Object.values(catMap),backgroundColor:catBg,borderWidth:0,borderRadius:3}]},
-    options:barOpts(),
+    type:'doughnut',
+    data:{labels:Object.keys(catMap).map(k=>catI[k]||k),datasets:[{data:Object.values(catMap),backgroundColor:Object.keys(catMap).map(k=>CAT_COLORS[k]||'#888'),borderWidth:0}]},
+    options:doughnutOpts(),
   });
 
   charts.tools = new Chart(document.getElementById('cTools'), {
@@ -800,6 +953,24 @@ function initCharts(sessions) {
     },
     options:barOpts(),
   });
+
+  const catProj = aggrCatByProject(sessions);
+  const catI_cp = I18N[lang].categories;
+  charts.catproj = new Chart(document.getElementById('cCatProj'), {
+    type:'bar',
+    data:{
+      labels: catProj.projects,
+      datasets: catProj.datasets.map(ds => ({...ds, label: catI_cp[ds.label] || ds.label})),
+    },
+    options:{
+      indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:8}}},
+      scales:{
+        x:{stacked:true, grid:GRID, ticks:TICKS, max:100},
+        y:{stacked:true, grid:{display:false}, ticks:{...TICKS,font:{size:11}}},
+      },
+    },
+  });
 }
 
 // Splice-replace labels+data so Chart.js mutation tracking fires reliably,
@@ -809,6 +980,21 @@ function _setBar(chart, labels, data, bg) {
   chart.data.labels.splice(0, chart.data.labels.length, ...labels);
   ds.data.splice(0, ds.data.length, ...data);
   if (bg && bg.length) ds.backgroundColor = bg;
+  chart.update('none');
+}
+
+function _setPolar(chart, labels, data, colors) {
+  chart.data.labels.splice(0, chart.data.labels.length, ...labels);
+  const ds = chart.data.datasets[0];
+  ds.data.splice(0, ds.data.length, ...data);
+  if (colors && colors.length) ds.backgroundColor = colors;
+  chart.update('none');
+}
+
+function _setRadar(chart, labels, data) {
+  chart.data.labels.splice(0, chart.data.labels.length, ...labels);
+  const ds = chart.data.datasets[0];
+  ds.data.splice(0, ds.data.length, ...data);
   chart.update('none');
 }
 
@@ -835,26 +1021,30 @@ function updateCharts(sessions) {
   const mKeys  = Object.keys(mCount);
   _setBar(charts.model, mKeys, mKeys.map(m=>mCount[m].sessions), mKeys.map(m=>MODEL_COLORS[m]||'#7d8590'));
 
-  _setBar(charts.dur, DUR_LABELS, aggrDuration(sessions), null);
+  charts.dur.data.datasets = aggrDurStacked(sessions);
+  charts.dur.update('none');
 
   const entryMap = aggrByField(sessions, 'entrypoint');
-  _setBar(charts.entrypoint, Object.keys(entryMap), Object.values(entryMap), PALETTE.slice(0, Object.keys(entryMap).length));
+  _setPolar(charts.entrypoint, Object.keys(entryMap), Object.values(entryMap), PALETTE);
 
   const permMap = aggrByField(sessions, 'permission_mode');
-  _setBar(charts.perm, Object.keys(permMap), Object.values(permMap), PALETTE.slice(3, 3+Object.keys(permMap).length));
+  _setPolar(charts.perm, Object.keys(permMap), Object.values(permMap), PALETTE.slice(3));
 
   const stopMap = aggrByField(sessions, 'stop_reason');
-  _setBar(charts.stopreason, Object.keys(stopMap), Object.values(stopMap), ['#34d399','#ff5c73','#e3b341','#a78bfa'].slice(0, Object.keys(stopMap).length));
+  _setPolar(charts.stopreason, Object.keys(stopMap), Object.values(stopMap), ['#34d399','#ff5c73','#e3b341','#a78bfa']);
 
   const catMap2 = aggrByCategory(sessions);
   const catI2   = I18N[lang].categories;
-  _setBar(charts.category,
-    Object.keys(catMap2).map(k => catI2[k] || k),
-    Object.values(catMap2),
-    Object.keys(catMap2).map(k => CAT_COLORS[k] || '#888'));
+  _setPolar(charts.category, Object.keys(catMap2).map(k=>catI2[k]||k), Object.values(catMap2), Object.keys(catMap2).map(k=>CAT_COLORS[k]||'#888'));
 
   const toolsTop10 = aggrTools(sessions);
   _setBar(charts.tools, toolsTop10.map(e=>e[0]), toolsTop10.map(e=>e[1]), null);
+
+  const catProj = aggrCatByProject(sessions);
+  const catI_up = I18N[lang].categories;
+  charts.catproj.data.labels = catProj.projects;
+  charts.catproj.data.datasets = catProj.datasets.map(ds=>({...ds,label:catI_up[ds.label]||ds.label}));
+  charts.catproj.update('none');
 }
 
 function updateChartLabels(sessions) {
@@ -871,8 +1061,12 @@ function updateChartLabels(sessions) {
   charts.time.options.plugins.tooltip.callbacks.afterBody =
     ctx => ctx[0] ? [i.tooltip_sessions+(map[ctx[0].label]?.sessions??'')] : [];
   charts.time.update();
-  charts.dur.data.datasets[0].label = i.kpi_sessions;
-  charts.dur.update();
+  const catI_lb  = I18N[lang].categories;
+  const catOrder = ['coding','exploration','automation','research','conversation','mixed'];
+  charts.catproj.data.datasets.forEach((ds,idx) => { ds.label = catI_lb[catOrder[idx]] || catOrder[idx]; });
+  charts.catproj.update('none');
+  const catMap_lb = aggrByCategory(sessions);
+  _setPolar(charts.category, Object.keys(catMap_lb).map(k=>catI_lb[k]||k), Object.values(catMap_lb), Object.keys(catMap_lb).map(k=>CAT_COLORS[k]||'#888'));
   const catI3   = I18N[lang].categories;
   const catMap3 = aggrByCategory(sessions);
   _setBar(charts.category,
