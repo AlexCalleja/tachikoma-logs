@@ -77,7 +77,19 @@ def parse_sessions() -> list[dict]:
         project = "temp" if is_appdata else (Path(cwd.replace("\\", "/")).name if cwd else "unknown")
         permission_mode = perm_counter.most_common(1)[0][0] if perm_counter else "unknown"
 
-        seen_msg_ids: set = set()
+        # Keep last chunk per message ID — streaming writes multiple partial entries;
+        # only the last has complete content (tool_use blocks, final token counts).
+        last_by_id: dict = {}
+        for entry in entries:
+            if entry.get("type") != "assistant":
+                continue
+            msg_id = entry.get("message", {}).get("id", "")
+            if msg_id:
+                last_by_id[msg_id] = entry
+            else:
+                last_by_id[id(entry)] = entry  # no id — keep as-is
+        deduped = list(last_by_id.values())
+
         total = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
         models_used: set = set()
         timestamps = []
@@ -85,16 +97,8 @@ def parse_sessions() -> list[dict]:
         stop_reason_counter: Counter = Counter()
         tool_counter: Counter = Counter()
 
-        for entry in entries:
-            if entry.get("type") != "assistant":
-                continue
+        for entry in deduped:
             msg = entry.get("message", {})
-            msg_id = msg.get("id", "")
-            if msg_id and msg_id in seen_msg_ids:
-                continue
-            if msg_id:
-                seen_msg_ids.add(msg_id)
-
             usage = msg.get("usage", {})
             if not usage or not (usage.get("output_tokens") or usage.get("input_tokens")):
                 continue
@@ -119,7 +123,13 @@ def parse_sessions() -> list[dict]:
 
             for block in msg.get("content", []):
                 if isinstance(block, dict) and block.get("type") == "tool_use":
-                    tool_counter[block.get("name", "unknown")] += 1
+                    name = block.get("name", "unknown")
+                    inp  = block.get("input") or {}
+                    if name == "Skill":
+                        name = "skill/" + (inp.get("skill") or "unknown")
+                    elif name == "Agent":
+                        name = "agent/" + (inp.get("subagent_type") or "general-purpose")
+                    tool_counter[name] += 1
 
         if not timestamps or total["output"] == 0:
             continue

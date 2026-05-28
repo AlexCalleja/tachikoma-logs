@@ -139,6 +139,26 @@ def test_parse_sessions_extracts_tools(monkeypatch, tmp_path):
     assert sessions[0]["tools"] == {"Read": 2, "Edit": 1}
 
 
+def test_parse_sessions_expands_skill_tool_name(monkeypatch, tmp_path):
+    projects_dir = tmp_path / ".claude" / "projects"
+    entry = _base_assistant(msg_id="msg_010")
+    entry["message"]["content"] = [{"type": "tool_use", "name": "Skill", "input": {"skill": "verify"}}]
+    _write_session(projects_dir, "sess1", [entry])
+    monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
+    sessions = parse_sessions()
+    assert sessions[0]["tools"] == {"skill/verify": 1}
+
+
+def test_parse_sessions_expands_agent_subagent_type(monkeypatch, tmp_path):
+    projects_dir = tmp_path / ".claude" / "projects"
+    entry = _base_assistant(msg_id="msg_011")
+    entry["message"]["content"] = [{"type": "tool_use", "name": "Agent", "input": {"subagent_type": "feature-dev:code-reviewer"}}]
+    _write_session(projects_dir, "sess1", [entry])
+    monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
+    sessions = parse_sessions()
+    assert sessions[0]["tools"] == {"agent/feature-dev:code-reviewer": 1}
+
+
 def test_parse_sessions_groups_appdata_as_temp(monkeypatch, tmp_path):
     projects_dir = tmp_path / ".claude" / "projects"
     # Write a session under a path containing "AppData"
