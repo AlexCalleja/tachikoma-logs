@@ -703,88 +703,6 @@ function aggrByModel(sessions) {
   return map;
 }
 
-function aggrDuration(sessions) {
-  const counts = new Array(DUR_LABELS.length).fill(0);
-  for (const s of sessions) {
-    for (let i = 0; i < DUR_EDGES.length - 1; i++) {
-      if (s.duration_min >= DUR_EDGES[i] && s.duration_min < DUR_EDGES[i+1]) {
-        counts[i]++; break;
-      }
-    }
-  }
-  return counts;
-}
-
-function aggrCacheTrend(sessions) {
-  const map = {};
-  for (const s of sessions) {
-    if (!map[s.date]) map[s.date] = {cost:0, cache:0, input:0};
-    map[s.date].cost  += s.estimated_cost || 0;
-    map[s.date].cache += s.cache_read     || 0;
-    map[s.date].input += s.input_tokens   || 0;
-  }
-  const dates = Object.keys(map).sort();
-  return {
-    dates,
-    cost:      dates.map(d => +map[d].cost.toFixed(3)),
-    cacheRate: dates.map(d => {
-      const total = map[d].input + map[d].cache;
-      return total > 0 ? +(map[d].cache / total * 100).toFixed(1) : 0;
-    }),
-  };
-}
-
-function aggrBubble(sessions) {
-  const map = {};
-  for (const s of sessions) {
-    const p = s.project || 'unknown';
-    if (!map[p]) map[p] = {sessions:0, cost:0, tokens:0, models:{}};
-    map[p].sessions++;
-    map[p].cost   += s.estimated_cost || 0;
-    map[p].tokens += s.total_tokens   || 0;
-    const m = s.primary_model || 'unknown';
-    map[p].models[m] = (map[p].models[m] || 0) + 1;
-  }
-  const byModel = {};
-  for (const [proj, v] of Object.entries(map)) {
-    const topModel = Object.entries(v.models).sort((a,b)=>b[1]-a[1])[0]?.[0] || 'unknown';
-    const r = Math.max(5, Math.min(28, Math.sqrt(v.tokens / 800)));
-    if (!byModel[topModel]) byModel[topModel] = [];
-    byModel[topModel].push({ x:v.sessions, y:+v.cost.toFixed(2), r, project:proj });
-  }
-  return Object.entries(byModel).map(([m, pts]) => ({
-    label: m,
-    data: pts,
-    backgroundColor: (MODEL_COLORS_BG[m] || 'rgba(128,128,128,.15)').replace('.15)', '.6)'),
-    borderColor: MODEL_COLORS[m] || '#7d8590',
-    borderWidth: 1,
-  }));
-}
-
-function aggrModelProfile(sessions) {
-  const MODELS = ['sonnet','opus','haiku'];
-  const map = {};
-  MODELS.forEach(m => map[m] = {n:0,input:0,output:0,cache:0,dur:0,msgs:0,tools:0});
-  for (const s of sessions) {
-    const m = s.primary_model;
-    if (!map[m]) continue;
-    map[m].n++;
-    map[m].input  += s.input_tokens  || 0;
-    map[m].output += s.output_tokens || 0;
-    map[m].cache  += s.cache_read    || 0;
-    map[m].dur    += s.duration_min  || 0;
-    map[m].msgs   += s.message_count || 0;
-    map[m].tools  += Object.values(s.tools || {}).reduce((a,b)=>a+b,0);
-  }
-  const active = MODELS.filter(m => map[m].n > 0);
-  if (!active.length) return [];
-  const avgs = active.map(m => {
-    const n = map[m].n;
-    return {model:m, raw:[map[m].input/n,map[m].output/n,map[m].cache/n,map[m].dur/n,map[m].msgs/n,map[m].tools/n]};
-  });
-  const maxes = avgs[0].raw.map((_,i) => Math.max(...avgs.map(a=>a.raw[i]))||1);
-  return avgs.map(a => ({model:a.model, data:a.raw.map((v,i)=>+(v/maxes[i]*100).toFixed(1))}));
-}
 
 function aggrDurStacked(sessions) {
   const present = {};
@@ -808,22 +726,6 @@ function aggrDurStacked(sessions) {
   }));
 }
 
-function aggrDurByModel(sessions) {
-  const MODELS = ['sonnet','opus','haiku'];
-  const map = {};
-  MODELS.forEach(m => map[m] = new Array(DUR_LABELS.length).fill(0));
-  for (const s of sessions) {
-    const m = s.primary_model;
-    if (!map[m]) continue;
-    for (let i = 0; i < DUR_EDGES.length - 1; i++) {
-      if (s.duration_min >= DUR_EDGES[i] && s.duration_min < DUR_EDGES[i+1]) { map[m][i]++; break; }
-    }
-  }
-  return MODELS.filter(m => map[m].reduce((a,b)=>a+b,0) > 0).map(m => {
-    const total = map[m].reduce((a,b)=>a+b,0) || 1;
-    return {model:m, data:map[m].map(v=>+(v/total*100).toFixed(1))};
-  });
-}
 
 function aggrCatByProject(sessions) {
   const CAT_ORDER = ['coding','exploration','automation','research','conversation','mixed'];
@@ -1098,12 +1000,6 @@ function _setPolar(chart, labels, data, colors) {
   chart.update('none');
 }
 
-function _setRadar(chart, labels, data) {
-  chart.data.labels.splice(0, chart.data.labels.length, ...labels);
-  const ds = chart.data.datasets[0];
-  ds.data.splice(0, ds.data.length, ...data);
-  chart.update('none');
-}
 
 function updateCharts(sessions) {
   const i = I18N[lang];
