@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-05-28
+
+### Added
+- Collapsible info panel on every KPI and chart card (`ℹ` button per element); `?` button in filter bar toggles all panels at once; 23 descriptions in ES and EN covering all KPIs, charts, and tables
+- `generate_demo.py`: generates a demo dashboard with 90 synthetic sessions across 5 obfuscated projects (reproducible, seed=42); `docs/demo.html` committed for GitHub Pages
+
+### Changed
+- README: rewritten with current feature list, live demo link, updated dev setup
+
+### Fixed
+- Skills & Agents "Last used" sort: `aggrSkills` was storing ISO strings — `sortTbl`'s `parseFloat` extracted only the year, making all dates equal; now stores epoch ms
+- Skills & Agents "Last used" column not updating on language toggle (missing `renderSkillsBody()` call in `setLang`)
+
+### Removed
+- 6 unused JS aggregation helpers left from cancelled chart experiments: `aggrDuration`, `aggrCacheTrend`, `aggrBubble`, `aggrModelProfile`, `aggrDurByModel`, `_setRadar` (~130 lines)
+
 ## [0.7.0] — 2026-05-28
 
 ### Added

@@ -21,6 +21,7 @@ python generate.py --output path/out.html # ruta personalizada
 ```
 tachikoma-logs/
 ├── generate.py      ← entrypoint: argparse + orquestación
+├── generate_demo.py ← genera dashboard con datos sintéticos obfuscados (seed=42, 90 sesiones)
 ├── log_parser.py    ← PRICING, get_tier(), calc_cost(), parse_sessions()
 ├── tips.py          ← compute_tips() — spec canónica de las 8 reglas (Python); la implementación
 │                      viva está portada a JS en dashboard.html (computeTips / buildClaudePrompt)
@@ -29,7 +30,8 @@ tachikoma-logs/
 │   └── dashboard.html  ← HTML/CSS/JS del dashboard; generate_html() inyecta datos via __PLACEHOLDER__
 └── tests/
     ├── test_log_parser.py
-    └── test_tips.py
+    ├── test_tips.py
+    └── test_e2e.py  ← Playwright e2e: errores JS en carga, filtros, sort, toggles idioma/tema
 ```
 
 Flujo de datos: `parse_sessions()` → `generate_html()` → browser computes tips + prompt en JS
