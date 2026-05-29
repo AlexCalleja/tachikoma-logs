@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>tachikoma-logs</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:#04111f; --surface:#0b1d30; --border:rgba(79,158,255,.18);
+      --text:#c5dcf2; --muted:#7fa9d4; --accent:#4f9eff;
+      --green:#34d399; --purple:#a78bfa; --orange:#fb923c; --red:#ff5c73;
+      --warn-bg:rgba(251,146,60,.09);  --warn-border:rgba(251,146,60,.3);
+      --info-bg:rgba(79,158,255,.09);  --info-border:rgba(79,158,255,.28);
+      --ok-bg:rgba(52,211,153,.09);    --ok-border:rgba(52,211,153,.28);
+    }
+    [data-theme="light"] {
+      --bg:#dce8f5; --surface:#f5f9fd; --border:rgba(21,101,192,.2);
+      --text:#0b1f38; --muted:#5b7fa6; --accent:#1565c0;
+      --green:#0d7f5c; --purple:#6d28d9; --orange:#b45309; --red:#c8001e;
+      --warn-bg:rgba(180,83,9,.08);    --warn-border:rgba(180,83,9,.28);
+      --info-bg:rgba(21,101,192,.08);  --info-border:rgba(21,101,192,.28);
+      --ok-bg:rgba(13,127,92,.08);     --ok-border:rgba(13,127,92,.28);
+    }
+    * { box-sizing:border-box; margin:0; padding:0 }
+    html {
+      background:var(--bg);
+      background-image:radial-gradient(ellipse 80% 50% at 50% -10%, rgba(79,158,255,.07), transparent);
+    }
+    [data-theme="light"] {
+      background-image:radial-gradient(ellipse 80% 50% at 50% -10%, rgba(21,101,192,.06), transparent);
+    }
+    body {
+      background:transparent; color:var(--text);
+      font-family:'Sora','DM Sans',sans-serif;
+      padding:2rem; max-width:1200px; margin:0 auto; font-size:.875rem;
+    }
+    h1 {
+      font-family:'JetBrains Mono','Fira Code',monospace;
+      font-size:1.05rem; font-weight:600; margin-bottom:.2rem; letter-spacing:-.01em;
+    }
+    h1::before { content:'$ '; color:var(--accent) }
+    h1::after  { content:'▋'; color:var(--accent); margin-left:.15em; animation:blink 1s step-end infinite }
+    @keyframes blink { 50% { opacity:0 } }
+    .meta { font-size:.67rem; color:var(--muted); font-family:'JetBrains Mono',monospace; margin-bottom:1.25rem; letter-spacing:.01em }
+
+    /* ── Filters ── */
+    .filters { display:flex; align-items:center; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.25rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:.65rem 1rem }
+    .filter-group { display:flex; gap:.3rem }
+    .filter-btn {
+      background:transparent; color:var(--muted); border:1px solid var(--border);
+      border-radius:5px; padding:.3rem .7rem; font-size:.68rem; font-weight:600;
+      font-family:'JetBrains Mono',monospace; cursor:pointer; transition:all .15s; letter-spacing:.02em;
+    }
+    .filter-btn:hover { color:var(--text); border-color:var(--accent) }
+    .filter-btn.active { background:var(--accent); color:#04111f; border-color:var(--accent) }
+    [data-theme="light"] .filter-btn.active { color:#f5f9fd }
+    .filter-sep { width:1px; background:var(--border); align-self:stretch }
+    .model-filters { display:flex; gap:.85rem; flex-wrap:wrap }
+    .model-check { display:flex; align-items:center; gap:.35rem; font-size:.7rem; color:var(--muted); cursor:pointer; user-select:none }
+    .model-check input { accent-color:var(--accent); cursor:pointer }
+    .model-check:hover { color:var(--text) }
+    .toggle-group { margin-left:auto; display:flex; gap:.35rem }
+
+    /* ── Stats ── */
+    .stats { display:grid; grid-template-columns:repeat(5,1fr); gap:.75rem; margin-bottom:1.25rem }
+    .stat {
+      background:var(--surface); border:1px solid var(--border); border-radius:8px;
+      padding:.9rem 1.1rem; border-left:2px solid var(--accent);
+      transition:border-color .2s, box-shadow .2s; position:relative;
+    }
+    .stat:hover              { box-shadow:0 0 0 1px var(--accent) inset }
+    .stat.kpi-ok             { border-left-color:var(--green) }
+    .stat.kpi-warn           { border-left-color:var(--orange) }
+    .stat.kpi-ok:hover       { box-shadow:0 0 0 1px var(--green) inset }
+    .stat.kpi-warn:hover     { box-shadow:0 0 0 1px var(--orange) inset }
+    .stat .lbl { font-size:.57rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; font-weight:500 }
+    .stat .val { font-size:1.45rem; font-weight:600; margin-top:.25rem; font-family:'JetBrains Mono',monospace; letter-spacing:-.03em }
+    .stat .sub { font-size:.57rem; color:var(--muted); margin-top:.12rem; font-family:'JetBrains Mono',monospace }
+
+    /* ── Charts ── */
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:.85rem; margin-bottom:1.25rem }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.25rem; transition:border-color .2s; position:relative }
+    .card:hover { border-color:rgba(6,182,212,.3) }
+    .card.full { grid-column:1/-1 }
+    .card h2 { font-size:.57rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; margin-bottom:1rem; font-family:'JetBrains Mono',monospace }
+    .info-btn { position:absolute; top:.55rem; right:.65rem; background:none; border:1px solid transparent; color:var(--muted); cursor:pointer; font-size:.6rem; padding:.15rem .35rem; border-radius:4px; font-family:'JetBrains Mono',monospace; transition:color .15s,border-color .15s; line-height:1; z-index:1 }
+    .info-btn:hover { color:var(--accent); border-color:var(--border) }
+    .info-btn.active { color:var(--accent); border-color:var(--accent) }
+    .info-panel { font-size:.68rem; color:var(--muted); line-height:1.6; padding:.5rem .75rem; margin-bottom:.75rem; background:var(--bg); border-radius:5px; border-left:2px solid var(--border) }
+    .ch-wrap { position:relative }
+    .ch-wrap canvas { position:absolute; inset:0 }
+
+    /* ── Tips ── */
+    .section-title { font-size:.57rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; margin-bottom:.7rem; font-family:'JetBrains Mono',monospace }
+    .section-title::before { content:'> '; color:var(--accent) }
+    .tips-section { margin-bottom:1.25rem }
+    .tip { background:var(--surface); border:1px solid var(--border); border-left:3px solid; border-radius:7px; padding:.8rem 1.1rem; margin-bottom:.5rem; display:flex; gap:.8rem; align-items:flex-start; transition:border-color .15s }
+    .tip.warn { border-left-color:var(--orange) }
+    .tip.info { border-left-color:var(--accent) }
+    .tip.ok   { border-left-color:var(--green) }
+    .tip.warn:hover { border-color:var(--orange) }
+    .tip.info:hover { border-color:var(--accent) }
+    .tip.ok:hover   { border-color:var(--green) }
+    .tip-icon { font-size:.8rem; flex-shrink:0; margin-top:.1rem; width:1rem; text-align:center; font-family:'JetBrains Mono',monospace }
+    .tip-title { font-size:.72rem; font-weight:600; margin-bottom:.25rem }
+    .tip.warn .tip-title { color:var(--orange) }
+    .tip.info .tip-title { color:var(--accent) }
+    .tip.ok   .tip-title { color:var(--green) }
+    .tip-body { font-size:.7rem; color:var(--muted); line-height:1.55 }
+
+    /* ── Tables ── */
+    .tables-section { margin-bottom:1.25rem }
+    .data-table { width:100%; border-collapse:collapse; font-size:.7rem }
+    .data-table th {
+      text-align:left; padding:.55rem .8rem; color:var(--muted); font-size:.57rem;
+      text-transform:uppercase; letter-spacing:.09em; border-bottom:1px solid var(--border);
+      cursor:pointer; white-space:nowrap; user-select:none; font-family:'JetBrains Mono',monospace;
+    }
+    .data-table th:hover { color:var(--text) }
+    .data-table th.sort-asc::after  { content:' ↑'; color:var(--accent) }
+    .data-table th.sort-desc::after { content:' ↓'; color:var(--accent) }
+    .data-table td { padding:.5rem .8rem; border-bottom:1px solid rgba(128,128,128,.1); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:.68rem }
+    .data-table tr:last-child td { border-bottom:none }
+    .data-table tr:hover td { background:rgba(6,182,212,.04) }
+    .model-tag { display:inline-block; padding:.1rem .5rem; border-radius:4px; font-size:.62rem; font-weight:600; letter-spacing:.02em }
+    .model-tag.opus   { background:rgba(167,139,250,.15); color:var(--purple) }
+    .model-tag.sonnet { background:rgba(6,182,212,.15);   color:var(--accent) }
+    .model-tag.haiku  { background:rgba(52,211,153,.15);  color:var(--green) }
+    .model-tag.mixed  { background:rgba(251,146,60,.15);  color:var(--orange) }
+    .empty-row { color:var(--muted); font-style:italic }
+
+    /* ── Heatmap ── */
+    .heatmap-wrap { overflow-x:auto }
+    .heatmap-grid { display:grid; grid-template-columns:2.5rem repeat(24,minmax(0,1fr)); gap:3px; min-width:500px }
+    .hm-label { font-family:'JetBrains Mono',monospace; font-size:.55rem; color:var(--muted); display:flex; align-items:center }
+    .hm-hour  { justify-content:center; padding-bottom:3px }
+    .hm-day   { justify-content:flex-end; padding-right:5px }
+    .hm-cell  { aspect-ratio:1; border-radius:2px; cursor:default; transition:transform .1s, opacity .1s }
+    .hm-cell:hover { transform:scale(1.4); z-index:1; position:relative }
+
+    /* ── Sessions table wrap ── */
+    #sessions-table-wrap { overflow-y:auto; transition:max-height .25s ease }
+
+    /* ── Claude prompt ── */
+    .claude-section { margin-bottom:1.25rem }
+    .claude-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.1rem 1.4rem; display:flex; align-items:center; gap:1.1rem }
+    .claude-desc { flex:1; font-size:.72rem; color:var(--muted); line-height:1.6 }
+    .claude-desc strong { color:var(--text) }
+    .btn-copy { background:var(--accent); color:#04111f; border:none; border-radius:6px; padding:.58rem 1.2rem; font-size:.72rem; font-weight:700; font-family:'Sora',sans-serif; cursor:pointer; white-space:nowrap; transition:all .15s; letter-spacing:.02em }
+    [data-theme="light"] .btn-copy { color:#f5f9fd }
+    .btn-copy:hover { opacity:.85; transform:translateY(-1px) }
+    .btn-copy.copied { background:var(--green) }
+
+    /* ── Animations ── */
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
+    h1                { animation:fadeUp .3s ease both; animation-delay:0s }
+    .meta             { animation:fadeUp .3s ease both; animation-delay:.06s }
+    .filters          { animation:fadeUp .35s ease both; animation-delay:.14s }
+    .stats            { animation:fadeUp .35s ease both; animation-delay:.26s }
+    .grid             { animation:fadeUp .4s ease both;  animation-delay:.46s }
+    .tables-section   { animation:fadeUp .35s ease both; animation-delay:.58s }
+    .tips-section     { animation:fadeUp .35s ease both; animation-delay:.66s }
+    .claude-section   { animation:fadeUp .35s ease both; animation-delay:.72s }
+
+    /* ── Responsive grid ── */
+    .grid-3 { grid-template-columns:1fr 1fr 1fr }
+    .grid-4 { grid-template-columns:repeat(4,1fr) }
+    .claude-btns { display:flex; flex-direction:column; gap:.4rem; align-items:flex-end; flex-shrink:0 }
+
+    @media(max-width:900px) {
+      .stats  { grid-template-columns:repeat(3,1fr) }
+      .grid   { grid-template-columns:1fr }
+      .grid-3 { grid-template-columns:1fr 1fr }
+      .grid-4 { grid-template-columns:1fr 1fr }
+    }
+    @media(max-width:600px) {
+      body    { padding:1rem }
+      .stats  { grid-template-columns:1fr 1fr }
+      .stat .val { font-size:1.2rem }
+      .grid, .grid-3, .grid-4 { grid-template-columns:1fr }
+      .filters { flex-direction:column; align-items:flex-start }
+      .toggle-group { margin-left:0 }
+      #date-range-label { display:none }
+      .claude-card { flex-direction:column; align-items:stretch; gap:.75rem }
+      .claude-btns { flex-direction:row; justify-content:flex-end; align-items:center }
+      .card { padding:.9rem }
+      .data-table { min-width:460px }
+      #sessions-table-wrap { overflow-x:auto }
+    }
+    @media(max-width:400px) {
+      .stats { grid-template-columns:1fr }
+      .stat .val { font-size:1.1rem }
+      body { padding:.75rem }
+    }
+  </style>
+</head>
+<body>
+  <h1>tachikoma-logs</h1>
+  <p class="meta"><span data-i18n="meta_generated"></span> 2026-05-28 18:01 &middot; Chart.js 4.4 &middot; ~/.claude/projects/</p>
+
+  <div class="filters">
+    <div class="filter-group">
+      <button class="filter-btn" data-days="7"  onclick="setDateFilter(7)">7d</button>
+      <button class="filter-btn active" data-days="30" onclick="setDateFilter(30)">30d</button>
+      <button class="filter-btn" data-days="90" onclick="setDateFilter(90)">90d</button>
+      <button class="filter-btn" data-days="0"  onclick="setDateFilter(0)" data-i18n="btn_all"></button>
+    </div>
+    <div class="filter-sep"></div>
+    <div class="model-filters">
+      <label class="model-check"><input type="checkbox" value="opus"   checked onchange="toggleModel('opus')">   Opus</label>
+      <label class="model-check"><input type="checkbox" value="sonnet" checked onchange="toggleModel('sonnet')"> Sonnet</label>
+      <label class="model-check"><input type="checkbox" value="haiku"  checked onchange="toggleModel('haiku')">  Haiku</label>
+      <label class="model-check"><input type="checkbox" value="mixed"  checked onchange="toggleModel('mixed')">  Mixed</label>
+    </div>
+    <span id="date-range-label" style="font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-left:.25rem"></span>
+    <div class="toggle-group">
+      <button class="filter-btn" id="btn-info"  onclick="toggleAllInfo()">?</button>
+      <button class="filter-btn" id="btn-lang"  onclick="toggleLang()">EN</button>
+      <button class="filter-btn" id="btn-theme" onclick="toggleTheme()">☀</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="lbl" data-i18n="kpi_sessions"></div><div class="val" id="s-sessions"></div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_tokens"></div><div class="val" id="s-tokens"></div><div class="sub" data-i18n="sub_tokens"></div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_cost"></div><div class="val" id="s-cost"></div><div class="sub" data-i18n="sub_cost"></div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_projects"></div><div class="val" id="s-projects"></div></div>
+    <div class="stat"><div class="lbl" data-i18n="kpi_duration"></div><div class="val" id="s-duration"></div><div class="sub" data-i18n="sub_duration"></div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card full"><h2 data-i18n="chart_time"></h2><div class="ch-wrap" style="height:240px"><canvas id="cTime"></canvas></div></div>
+    <div class="card"><h2 data-i18n="chart_proj"></h2><div class="ch-wrap" style="height:210px"><canvas id="cProj"></canvas></div></div>
+    <div class="card"><h2 data-i18n="chart_model"></h2><div class="ch-wrap" style="height:120px"><canvas id="cModel"></canvas></div></div>
+    <div class="card full"><h2 data-i18n="chart_dur"></h2><div class="ch-wrap" style="height:180px"><canvas id="cDur"></canvas></div></div>
+  </div>
+
+  <div class="grid grid-4">
+    <div class="card"><h2 data-i18n="chart_entrypoint"></h2><div class="ch-wrap" style="height:170px"><canvas id="cEntrypoint"></canvas></div></div>
+    <div class="card"><h2 data-i18n="chart_perm"></h2><div class="ch-wrap" style="height:170px"><canvas id="cPerm"></canvas></div></div>
+    <div class="card"><h2 data-i18n="chart_stopreason"></h2><div class="ch-wrap" style="height:170px"><canvas id="cStopReason"></canvas></div></div>
+    <div class="card"><h2 data-i18n="chart_category"></h2><div class="ch-wrap" style="height:170px"><canvas id="cCategory"></canvas></div></div>
+    <div class="card full"><h2 data-i18n="chart_tools"></h2><div class="ch-wrap" style="height:280px"><canvas id="cTools"></canvas></div></div>
+    <div class="card full"><h2 data-i18n="chart_catproj"></h2><div class="ch-wrap" style="height:260px"><canvas id="cCatProj"></canvas></div></div>
+    <div class="card full">
+      <h2 data-i18n="chart_skills"></h2>
+      <table class="data-table" id="tSkills">
+        <thead><tr>
+          <th onclick="sortTbl('tSkills',0)" data-i18n="th_skill"></th>
+          <th onclick="sortTbl('tSkills',1)" data-i18n="th_project"></th>
+          <th onclick="sortTbl('tSkills',2)" data-i18n="th_calls"></th>
+          <th onclick="sortTbl('tSkills',3)" data-i18n="th_uniq_sessions"></th>
+          <th onclick="sortTbl('tSkills',4)" data-i18n="th_last_used"></th>
+        </tr></thead>
+        <tbody id="tSkills-body"></tbody>
+      </table>
+    </div>
+    <div class="card full"><h2 data-i18n="chart_heatmap"></h2><div id="heatmap-container"></div></div>
+  </div>
+
+  <div class="tables-section">
+    <div class="card" style="margin-bottom:.85rem">
+      <h2 data-i18n="tbl_proj_title"></h2>
+      <table class="data-table" id="tProj">
+        <thead><tr>
+          <th onclick="sortTbl('tProj',0)" data-i18n="th_project"></th>
+          <th onclick="sortTbl('tProj',1)" data-i18n="th_sessions"></th>
+          <th onclick="sortTbl('tProj',2)" data-i18n="th_tokens"></th>
+          <th onclick="sortTbl('tProj',3)" data-i18n="th_cost_usd"></th>
+          <th onclick="sortTbl('tProj',4)" data-i18n="th_pct_total"></th>
+          <th onclick="sortTbl('tProj',5)" data-i18n="th_model_col"></th>
+        </tr></thead>
+        <tbody id="tProj-body"></tbody>
+      </table>
+    </div>
+    <div class="card" style="margin-bottom:.85rem">
+      <h2 data-i18n="tbl_model_title"></h2>
+      <table class="data-table" id="tModel">
+        <thead><tr>
+          <th onclick="sortTbl('tModel',0)" data-i18n="th_model"></th>
+          <th onclick="sortTbl('tModel',1)" data-i18n="th_sessions"></th>
+          <th onclick="sortTbl('tModel',2)" data-i18n="th_input"></th>
+          <th onclick="sortTbl('tModel',3)" data-i18n="th_output"></th>
+          <th onclick="sortTbl('tModel',4)" data-i18n="th_cache_read"></th>
+          <th onclick="sortTbl('tModel',5)" data-i18n="th_cache_create"></th>
+          <th onclick="sortTbl('tModel',6)" data-i18n="th_cost_usd"></th>
+        </tr></thead>
+        <tbody id="tModel-body"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2><span data-i18n="tbl_sessions_title"></span> <span id="sessions-count-label" style="font-weight:400;text-transform:none;font-size:.6rem;color:var(--muted)"></span></h2>
+      <div id="sessions-table-wrap">
+        <table class="data-table" id="tSessions">
+          <thead><tr>
+            <th onclick="sortTbl('tSessions',0)" data-i18n="th_date"></th>
+            <th onclick="sortTbl('tSessions',1)" data-i18n="th_project"></th>
+            <th onclick="sortTbl('tSessions',2)" data-i18n="th_dur"></th>
+            <th onclick="sortTbl('tSessions',3)" data-i18n="th_model_col"></th>
+            <th onclick="sortTbl('tSessions',4)" data-i18n="th_tokens"></th>
+            <th onclick="sortTbl('tSessions',5)" data-i18n="th_cost"></th>
+            <th onclick="sortTbl('tSessions',6)" data-i18n="th_stop_reason"></th>
+          </tr></thead>
+          <tbody id="tSessions-body"></tbody>
+        </table>
+      </div>
+      <button id="btn-show-all" class="filter-btn" style="margin-top:.75rem;display:none" onclick="toggleAllSessions()"></button>
+    </div>
+  </div>
+
+  <div class="tips-section">
+    <div class="section-title" data-i18n="tips_title"></div>
+    <div id="tips-container"></div>
+  </div>
+
+  <div class="claude-section">
+    <div class="section-title" data-i18n="claude_title"></div>
+    <div class="claude-card">
+      <div class="claude-desc">
+        <strong data-i18n="claude_desc_strong"></strong> <span data-i18n="claude_desc"></span>
+      </div>
+      <div class="claude-btns">
+        <button class="btn-copy" id="btn-copy" onclick="copyClaudePrompt()"></button>
+        <button class="filter-btn" id="btn-preview" onclick="togglePromptPreview()"></button>
+      </div>
+    </div>
+    <div id="prompt-preview" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin-top:.6rem;overflow-x:auto">
+      <pre id="prompt-preview-text" style="font-family:'JetBrains Mono',monospace;font-size:.63rem;color:var(--muted);line-height:1.65;white-space:pre-wrap;word-break:break-word;margin:0"></pre>
+    </div>
+  </div>
+
+<script>
+const ALL_SESSIONS = [{"session_id": "demo-0062", "project": "research", "date": "2026-03-07", "datetime": "2026-03-07T14:57:00Z", "duration_min": 2.4, "input_tokens": 8580, "output_tokens": 1414, "cache_read": 3389, "cache_create": 704, "total_tokens": 9994, "primary_model": "sonnet", "estimated_cost": 0.0506, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {}, "message_count": 23}, {"session_id": "demo-0002", "project": "web-app", "date": "2026-03-08", "datetime": "2026-03-08T18:53:00Z", "duration_min": 1.5, "input_tokens": 8919, "output_tokens": 2563, "cache_read": 2965, "cache_create": 1014, "total_tokens": 11482, "primary_model": "sonnet", "estimated_cost": 0.0699, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 11, "Read": 3, "Glob": 1, "Write": 1}, "message_count": 13}, {"session_id": "demo-0004", "project": "api-service", "date": "2026-03-11", "datetime": "2026-03-11T19:30:00Z", "duration_min": 1.5, "input_tokens": 7680, "output_tokens": 4554, "cache_read": 4026, "cache_create": 955, "total_tokens": 12234, "primary_model": "sonnet", "estimated_cost": 0.0961, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "max_tokens", "tools": {"Read": 8, "Glob": 7, "Grep": 7, "LS": 2, "Bash": 1}, "message_count": 27}, {"session_id": "demo-0063", "project": "infra-scripts", "date": "2026-03-22", "datetime": "2026-03-22T15:30:00Z", "duration_min": 3.0, "input_tokens": 14987, "output_tokens": 1221, "cache_read": 6862, "cache_create": 1432, "total_tokens": 16208, "primary_model": "opus", "estimated_cost": 0.3535, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"WebSearch": 4, "WebFetch": 4, "Read": 5, "Bash": 1, "skill/frontend-design:frontend-design": 1}, "message_count": 30}, {"session_id": "demo-0065", "project": "infra-scripts", "date": "2026-03-24", "datetime": "2026-03-24T14:28:00Z", "duration_min": 11.6, "input_tokens": 4901, "output_tokens": 3770, "cache_read": 1388, "cache_create": 471, "total_tokens": 8671, "primary_model": "sonnet", "estimated_cost": 0.0734, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 6, "Edit": 5, "Write": 1, "Glob": 1, "Grep": 4, "Bash": 2}, "message_count": 31}, {"session_id": "demo-0022", "project": "api-service", "date": "2026-03-24", "datetime": "2026-03-24T21:11:00Z", "duration_min": 3.1, "input_tokens": 11103, "output_tokens": 1215, "cache_read": 6317, "cache_create": 2273, "total_tokens": 12318, "primary_model": "sonnet", "estimated_cost": 0.062, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "max_tokens", "tools": {"Read": 14, "Edit": 7, "Write": 2, "Glob": 4, "Grep": 3, "Bash": 1, "agent/feature-dev:code-reviewer": 3}, "message_count": 23}, {"session_id": "demo-0023", "project": "data-pipeline", "date": "2026-03-25", "datetime": "2026-03-25T16:27:00Z", "duration_min": 2.1, "input_tokens": 500, "output_tokens": 302, "cache_read": 83, "cache_create": 59, "total_tokens": 802, "primary_model": "sonnet", "estimated_cost": 0.0063, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 11, "Read": 2, "Glob": 2, "Write": 1, "skill/verify": 4, "agent/feature-dev:code-reviewer": 1}, "message_count": 23}, {"session_id": "demo-0019", "project": "web-app", "date": "2026-03-27", "datetime": "2026-03-27T13:25:00Z", "duration_min": 2.0, "input_tokens": 8793, "output_tokens": 2988, "cache_read": 953, "cache_create": 1458, "total_tokens": 11781, "primary_model": "opus", "estimated_cost": 0.3848, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"Read": 18, "Glob": 4, "Grep": 7, "LS": 1, "Bash": 1}, "message_count": 31}, {"session_id": "demo-0084", "project": "data-pipeline", "date": "2026-03-27", "datetime": "2026-03-27T22:00:00Z", "duration_min": 53.3, "input_tokens": 12696, "output_tokens": 2924, "cache_read": 3121, "cache_create": 908, "total_tokens": 15620, "primary_model": "mixed", "estimated_cost": 0.0863, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 11, "Edit": 5, "Write": 1, "Glob": 2, "Grep": 4, "Bash": 1}, "message_count": 11}, {"session_id": "demo-0083", "project": "infra-scripts", "date": "2026-03-29", "datetime": "2026-03-29T11:24:00Z", "duration_min": 1.1, "input_tokens": 500, "output_tokens": 1811, "cache_read": -480, "cache_create": -96, "total_tokens": 2311, "primary_model": "opus", "estimated_cost": 0.1408, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 9, "Glob": 6, "Grep": 8, "LS": 4, "Bash": 1, "agent/feature-dev:code-reviewer": 1, "agent/general-purpose": 4}, "message_count": 31}, {"session_id": "demo-0077", "project": "data-pipeline", "date": "2026-03-30", "datetime": "2026-03-30T14:12:00Z", "duration_min": 3.5, "input_tokens": 7021, "output_tokens": 3022, "cache_read": 2636, "cache_create": 716, "total_tokens": 10043, "primary_model": "sonnet", "estimated_cost": 0.0699, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 9, "Read": 2, "Glob": 1, "Write": 1}, "message_count": 15}, {"session_id": "demo-0007", "project": "data-pipeline", "date": "2026-04-02", "datetime": "2026-04-02T08:04:00Z", "duration_min": 3.5, "input_tokens": 8921, "output_tokens": 4005, "cache_read": 1486, "cache_create": 1193, "total_tokens": 12926, "primary_model": "sonnet", "estimated_cost": 0.0918, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 6, "Edit": 6, "Write": 1, "Glob": 2, "Grep": 1, "Bash": 1}, "message_count": 22}, {"session_id": "demo-0008", "project": "api-service", "date": "2026-04-02", "datetime": "2026-04-02T11:12:00Z", "duration_min": 6.3, "input_tokens": 500, "output_tokens": 2924, "cache_read": -318, "cache_create": -125, "total_tokens": 3424, "primary_model": "sonnet", "estimated_cost": 0.0448, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 6, "Read": 3, "Glob": 1, "Write": 1, "agent/general-purpose": 3}, "message_count": 27}, {"session_id": "demo-0009", "project": "infra-scripts", "date": "2026-04-02", "datetime": "2026-04-02T15:08:00Z", "duration_min": 1.6, "input_tokens": 500, "output_tokens": 2392, "cache_read": -422, "cache_create": -219, "total_tokens": 2892, "primary_model": "haiku", "estimated_cost": 0.0097, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"Bash": 9, "Read": 2, "Glob": 1, "Write": 1}, "message_count": 21}, {"session_id": "demo-0066", "project": "web-app", "date": "2026-04-03", "datetime": "2026-04-03T14:50:00Z", "duration_min": 8.8, "input_tokens": 13602, "output_tokens": 802, "cache_read": 6188, "cache_create": 2576, "total_tokens": 14404, "primary_model": "sonnet", "estimated_cost": 0.0644, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "max_tokens", "tools": {"Read": 16, "Glob": 6, "Grep": 8, "LS": 3, "Bash": 1}, "message_count": 23}, {"session_id": "demo-0024", "project": "infra-scripts", "date": "2026-04-05", "datetime": "2026-04-05T13:10:00Z", "duration_min": 15.1, "input_tokens": 9614, "output_tokens": 2352, "cache_read": 4617, "cache_create": 2102, "total_tokens": 11966, "primary_model": "opus", "estimated_cost": 0.3669, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"WebSearch": 5, "WebFetch": 2, "Read": 6, "Bash": 1, "skill/verify": 2}, "message_count": 22}, {"session_id": "demo-0060", "project": "data-pipeline", "date": "2026-04-06", "datetime": "2026-04-06T11:16:00Z", "duration_min": 1.7, "input_tokens": 1987, "output_tokens": 1250, "cache_read": 246, "cache_create": 323, "total_tokens": 3237, "primary_model": "sonnet", "estimated_cost": 0.026, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 11, "Read": 3, "Glob": 2, "Write": 1, "skill/verify": 2}, "message_count": 39}, {"session_id": "demo-0028", "project": "web-app", "date": "2026-04-06", "datetime": "2026-04-06T12:14:00Z", "duration_min": 12.0, "input_tokens": 1640, "output_tokens": 2262, "cache_read": 817, "cache_create": 282, "total_tokens": 3902, "primary_model": "mixed", "estimated_cost": 0.0402, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"WebSearch": 5, "WebFetch": 3, "Read": 4, "Bash": 1, "skill/verify": 3}, "message_count": 15}, {"session_id": "demo-0061", "project": "infra-scripts", "date": "2026-04-06", "datetime": "2026-04-06T13:51:00Z", "duration_min": 9.4, "input_tokens": 7430, "output_tokens": 193, "cache_read": 2380, "cache_create": 844, "total_tokens": 7623, "primary_model": "sonnet", "estimated_cost": 0.0291, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"Read": 1, "Edit": 7, "Write": 1, "Glob": 3, "Grep": 3, "Bash": 1, "skill/code-review": 2}, "message_count": 14}, {"session_id": "demo-0003", "project": "api-service", "date": "2026-04-07", "datetime": "2026-04-07T11:23:00Z", "duration_min": 43.2, "input_tokens": 7461, "output_tokens": 2633, "cache_read": 3645, "cache_create": 610, "total_tokens": 10094, "primary_model": "haiku", "estimated_cost": 0.0174, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 11, "Read": 4, "Glob": 1, "Write": 1}, "message_count": 4}, {"session_id": "demo-0006", "project": "research", "date": "2026-04-07", "datetime": "2026-04-07T15:02:00Z", "duration_min": 14.9, "input_tokens": 7297, "output_tokens": 4653, "cache_read": 3231, "cache_create": 1596, "total_tokens": 11950, "primary_model": "sonnet", "estimated_cost": 0.0986, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"WebSearch": 4, "WebFetch": 4, "Read": 3, "Bash": 1}, "message_count": 29}, {"session_id": "demo-0078", "project": "api-service", "date": "2026-04-07", "datetime": "2026-04-07T15:47:00Z", "duration_min": 5.5, "input_tokens": 13044, "output_tokens": 1961, "cache_read": 1965, "cache_create": 1028, "total_tokens": 15005, "primary_model": "sonnet", "estimated_cost": 0.073, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 5, "Glob": 4, "Grep": 7, "LS": 3, "Bash": 1}, "message_count": 36}, {"session_id": "demo-0036", "project": "data-pipeline", "date": "2026-04-07", "datetime": "2026-04-07T16:56:00Z", "duration_min": 27.1, "input_tokens": 1196, "output_tokens": 2533, "cache_read": 433, "cache_create": 103, "total_tokens": 3729, "primary_model": "sonnet", "estimated_cost": 0.0421, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 6, "Read": 2, "Glob": 2, "Write": 1}, "message_count": 38}, {"session_id": "demo-0010", "project": "research", "date": "2026-04-07", "datetime": "2026-04-07T22:36:00Z", "duration_min": 1.0, "input_tokens": 10192, "output_tokens": 1806, "cache_read": 1696, "cache_create": 2074, "total_tokens": 11998, "primary_model": "sonnet", "estimated_cost": 0.066, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 10, "Glob": 6, "Grep": 13, "LS": 2, "Bash": 1}, "message_count": 27}, {"session_id": "demo-0031", "project": "web-app", "date": "2026-04-08", "datetime": "2026-04-08T19:09:00Z", "duration_min": 3.1, "input_tokens": 9768, "output_tokens": 2487, "cache_read": 1076, "cache_create": 2324, "total_tokens": 12255, "primary_model": "opus", "estimated_cost": 0.3782, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"skill/verify": 1}, "message_count": 16}, {"session_id": "demo-0087", "project": "api-service", "date": "2026-04-09", "datetime": "2026-04-09T10:17:00Z", "duration_min": 3.3, "input_tokens": 6638, "output_tokens": 1319, "cache_read": 3065, "cache_create": 1544, "total_tokens": 7957, "primary_model": "mixed", "estimated_cost": 0.0464, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "max_tokens", "tools": {"Read": 7, "Edit": 6, "Write": 1, "Glob": 3, "Grep": 3, "Bash": 1}, "message_count": 31}, {"session_id": "demo-0026", "project": "api-service", "date": "2026-04-09", "datetime": "2026-04-09T20:38:00Z", "duration_min": 6.9, "input_tokens": 17276, "output_tokens": 3008, "cache_read": 3647, "cache_create": 1310, "total_tokens": 20284, "primary_model": "haiku", "estimated_cost": 0.0275, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {}, "message_count": 27}, {"session_id": "demo-0076", "project": "data-pipeline", "date": "2026-04-10", "datetime": "2026-04-10T13:58:00Z", "duration_min": 87.1, "input_tokens": 13832, "output_tokens": 2775, "cache_read": 7725, "cache_create": 1112, "total_tokens": 16607, "primary_model": "opus", "estimated_cost": 0.448, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"Read": 6, "Edit": 7, "Write": 1, "Glob": 3, "Grep": 5, "Bash": 2}, "message_count": 8}, {"session_id": "demo-0079", "project": "api-service", "date": "2026-04-11", "datetime": "2026-04-11T12:15:00Z", "duration_min": 1.7, "input_tokens": 9619, "output_tokens": 1427, "cache_read": 2210, "cache_create": 2218, "total_tokens": 11046, "primary_model": "opus", "estimated_cost": 0.2962, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "max_tokens", "tools": {}, "message_count": 24}, {"session_id": "demo-0032", "project": "web-app", "date": "2026-04-11", "datetime": "2026-04-11T16:44:00Z", "duration_min": 3.7, "input_tokens": 5921, "output_tokens": 4902, "cache_read": 923, "cache_create": 484, "total_tokens": 10823, "primary_model": "sonnet", "estimated_cost": 0.0934, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 18, "Glob": 3, "Grep": 6, "LS": 3, "Bash": 1, "skill/verify": 2}, "message_count": 5}, {"session_id": "demo-0081", "project": "research", "date": "2026-04-12", "datetime": "2026-04-12T19:30:00Z", "duration_min": 3.5, "input_tokens": 1619, "output_tokens": 4211, "cache_read": 351, "cache_create": 347, "total_tokens": 5830, "primary_model": "opus", "estimated_cost": 0.3471, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"Read": 6, "Edit": 7, "Write": 2, "Glob": 3, "Grep": 2, "Bash": 1}, "message_count": 4}, {"session_id": "demo-0075", "project": "infra-scripts", "date": "2026-04-12", "datetime": "2026-04-12T21:02:00Z", "duration_min": 3.2, "input_tokens": 4607, "output_tokens": 3943, "cache_read": 1078, "cache_create": 255, "total_tokens": 8550, "primary_model": "opus", "estimated_cost": 0.3712, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "max_tokens", "tools": {}, "message_count": 32}, {"session_id": "demo-0027", "project": "infra-scripts", "date": "2026-04-14", "datetime": "2026-04-14T16:12:00Z", "duration_min": 8.8, "input_tokens": 7898, "output_tokens": 4151, "cache_read": 2123, "cache_create": 1422, "total_tokens": 12049, "primary_model": "haiku", "estimated_cost": 0.0245, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 8, "Edit": 9, "Write": 1, "Glob": 1, "Grep": 3, "Bash": 1, "agent/feature-dev:code-reviewer": 4, "skill/frontend-design:frontend-design": 4}, "message_count": 9}, {"session_id": "demo-0064", "project": "infra-scripts", "date": "2026-04-14", "datetime": "2026-04-14T19:34:00Z", "duration_min": 3.8, "input_tokens": 8830, "output_tokens": 2655, "cache_read": 2906, "cache_create": 2016, "total_tokens": 11485, "primary_model": "sonnet", "estimated_cost": 0.0747, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"Read": 6, "Edit": 6, "Write": 2, "Glob": 3, "Grep": 6, "Bash": 1}, "message_count": 38}, {"session_id": "demo-0073", "project": "data-pipeline", "date": "2026-04-15", "datetime": "2026-04-15T22:36:00Z", "duration_min": 9.5, "input_tokens": 13566, "output_tokens": 831, "cache_read": 4505, "cache_create": 2843, "total_tokens": 14397, "primary_model": "sonnet", "estimated_cost": 0.0652, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 7, "Edit": 9, "Write": 2, "Glob": 3, "Grep": 2, "Bash": 2}, "message_count": 4}, {"session_id": "demo-0016", "project": "data-pipeline", "date": "2026-04-16", "datetime": "2026-04-16T16:26:00Z", "duration_min": 1.7, "input_tokens": 12353, "output_tokens": 2726, "cache_read": 5106, "cache_create": 1349, "total_tokens": 15079, "primary_model": "opus", "estimated_cost": 0.4227, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 7, "Edit": 7, "Write": 2, "Glob": 4, "Grep": 3, "Bash": 2}, "message_count": 19}, {"session_id": "demo-0015", "project": "api-service", "date": "2026-04-18", "datetime": "2026-04-18T08:10:00Z", "duration_min": 8.6, "input_tokens": 8514, "output_tokens": 3814, "cache_read": 2638, "cache_create": 560, "total_tokens": 12328, "primary_model": "sonnet", "estimated_cost": 0.0856, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 6, "Edit": 8, "Write": 1, "Glob": 3, "Grep": 4, "Bash": 3}, "message_count": 39}, {"session_id": "demo-0046", "project": "web-app", "date": "2026-04-18", "datetime": "2026-04-18T14:40:00Z", "duration_min": 2.5, "input_tokens": 5115, "output_tokens": 3540, "cache_read": 2635, "cache_create": 725, "total_tokens": 8655, "primary_model": "sonnet", "estimated_cost": 0.072, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 10, "Read": 3, "Glob": 1, "Write": 1}, "message_count": 10}, {"session_id": "demo-0088", "project": "infra-scripts", "date": "2026-04-19", "datetime": "2026-04-19T12:40:00Z", "duration_min": 16.5, "input_tokens": 12094, "output_tokens": 2078, "cache_read": 2412, "cache_create": 1032, "total_tokens": 14172, "primary_model": "sonnet", "estimated_cost": 0.072, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "max_tokens", "tools": {"Read": 11, "Edit": 5, "Write": 1, "Glob": 2, "Grep": 3, "Bash": 2}, "message_count": 36}, {"session_id": "demo-0071", "project": "data-pipeline", "date": "2026-04-20", "datetime": "2026-04-20T07:16:00Z", "duration_min": 3.9, "input_tokens": 500, "output_tokens": 944, "cache_read": -259, "cache_create": -215, "total_tokens": 1444, "primary_model": "opus", "estimated_cost": 0.0739, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "max_tokens", "tools": {"Bash": 4, "Read": 2, "Glob": 1, "Write": 1, "agent/general-purpose": 1}, "message_count": 4}, {"session_id": "demo-0029", "project": "research", "date": "2026-04-21", "datetime": "2026-04-21T16:05:00Z", "duration_min": 2.5, "input_tokens": 9275, "output_tokens": 743, "cache_read": 4098, "cache_create": 1434, "total_tokens": 10018, "primary_model": "sonnet", "estimated_cost": 0.0456, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"Bash": 10, "Read": 2, "Glob": 1, "Write": 1}, "message_count": 22}, {"session_id": "demo-0005", "project": "research", "date": "2026-04-22", "datetime": "2026-04-22T18:50:00Z", "duration_min": 17.6, "input_tokens": 10673, "output_tokens": 1618, "cache_read": 5133, "cache_create": 687, "total_tokens": 12291, "primary_model": "sonnet", "estimated_cost": 0.0604, "entrypoint": "ide", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"Bash": 11, "Read": 2, "Glob": 1, "Write": 1, "agent/feature-dev:code-reviewer": 2}, "message_count": 11}, {"session_id": "demo-0082", "project": "api-service", "date": "2026-04-23", "datetime": "2026-04-23T16:52:00Z", "duration_min": 3.4, "input_tokens": 8643, "output_tokens": 2593, "cache_read": 980, "cache_create": 1069, "total_tokens": 11236, "primary_model": "mixed", "estimated_cost": 0.0691, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 13, "Glob": 4, "Grep": 5, "LS": 2, "Bash": 1}, "message_count": 27}, {"session_id": "demo-0012", "project": "infra-scripts", "date": "2026-04-24", "datetime": "2026-04-24T18:09:00Z", "duration_min": 19.9, "input_tokens": 1650, "output_tokens": 3801, "cache_read": 180, "cache_create": 102, "total_tokens": 5451, "primary_model": "sonnet", "estimated_cost": 0.0624, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 9, "Read": 2, "Glob": 1, "Write": 1, "skill/code-review": 2}, "message_count": 8}, {"session_id": "demo-0080", "project": "data-pipeline", "date": "2026-04-24", "datetime": "2026-04-24T20:23:00Z", "duration_min": 11.0, "input_tokens": 10665, "output_tokens": 2156, "cache_read": 2950, "cache_create": 902, "total_tokens": 12821, "primary_model": "sonnet", "estimated_cost": 0.0686, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"skill/verify": 2, "agent/general-purpose": 4}, "message_count": 8}, {"session_id": "demo-0070", "project": "web-app", "date": "2026-04-24", "datetime": "2026-04-24T21:28:00Z", "duration_min": 19.9, "input_tokens": 7561, "output_tokens": 3131, "cache_read": 1759, "cache_create": 1515, "total_tokens": 10692, "primary_model": "sonnet", "estimated_cost": 0.0759, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "max_tokens", "tools": {"WebSearch": 5, "WebFetch": 4, "Read": 1, "Bash": 1}, "message_count": 7}, {"session_id": "demo-0001", "project": "api-service", "date": "2026-04-25", "datetime": "2026-04-25T09:16:00Z", "duration_min": 1.4, "input_tokens": 5032, "output_tokens": 3590, "cache_read": 1048, "cache_create": 676, "total_tokens": 8622, "primary_model": "opus", "estimated_cost": 0.359, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 14, "Glob": 4, "Grep": 4, "LS": 2, "Bash": 1, "skill/frontend-design:frontend-design": 1}, "message_count": 31}, {"session_id": "demo-0068", "project": "infra-scripts", "date": "2026-04-25", "datetime": "2026-04-25T10:38:00Z", "duration_min": 11.5, "input_tokens": 7804, "output_tokens": 1934, "cache_read": 2116, "cache_create": 535, "total_tokens": 9738, "primary_model": "haiku", "estimated_cost": 0.0147, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {}, "message_count": 15}, {"session_id": "demo-0041", "project": "infra-scripts", "date": "2026-04-25", "datetime": "2026-04-25T12:57:00Z", "duration_min": 3.7, "input_tokens": 14522, "output_tokens": 3267, "cache_read": 1691, "cache_create": 3243, "total_tokens": 17789, "primary_model": "sonnet", "estimated_cost": 0.1052, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"WebSearch": 3, "WebFetch": 1, "Read": 3, "Bash": 1}, "message_count": 26}, {"session_id": "demo-0013", "project": "data-pipeline", "date": "2026-04-26", "datetime": "2026-04-26T12:41:00Z", "duration_min": 1.7, "input_tokens": 7570, "output_tokens": 3415, "cache_read": 4350, "cache_create": 1580, "total_tokens": 10985, "primary_model": "sonnet", "estimated_cost": 0.0812, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 12, "Glob": 6, "Grep": 3, "LS": 3, "Bash": 1}, "message_count": 34}, {"session_id": "demo-0048", "project": "research", "date": "2026-04-26", "datetime": "2026-04-26T16:50:00Z", "duration_min": 3.8, "input_tokens": 12726, "output_tokens": 3026, "cache_read": 7230, "cache_create": 2414, "total_tokens": 15752, "primary_model": "sonnet", "estimated_cost": 0.0948, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 10, "Read": 4, "Glob": 2, "Write": 1, "skill/code-review": 1}, "message_count": 19}, {"session_id": "demo-0000", "project": "infra-scripts", "date": "2026-04-26", "datetime": "2026-04-26T20:02:00Z", "duration_min": 12.7, "input_tokens": 12023, "output_tokens": 2882, "cache_read": 6314, "cache_create": 1395, "total_tokens": 14905, "primary_model": "mixed", "estimated_cost": 0.0864, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 13, "Glob": 4, "Grep": 7, "LS": 3, "Bash": 1}, "message_count": 30}, {"session_id": "demo-0067", "project": "web-app", "date": "2026-04-26", "datetime": "2026-04-26T20:29:00Z", "duration_min": 2.2, "input_tokens": 500, "output_tokens": 2087, "cache_read": -69, "cache_create": -37, "total_tokens": 2587, "primary_model": "sonnet", "estimated_cost": 0.0326, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 9, "Read": 3, "Glob": 2, "Write": 1}, "message_count": 31}, {"session_id": "demo-0014", "project": "web-app", "date": "2026-04-28", "datetime": "2026-04-28T14:17:00Z", "duration_min": 100.5, "input_tokens": 4463, "output_tokens": 2955, "cache_read": 1773, "cache_create": 247, "total_tokens": 7418, "primary_model": "haiku", "estimated_cost": 0.0158, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 14, "Glob": 4, "Grep": 8, "LS": 2, "Bash": 1}, "message_count": 28}, {"session_id": "demo-0072", "project": "web-app", "date": "2026-04-29", "datetime": "2026-04-29T12:22:00Z", "duration_min": 14.3, "input_tokens": 7532, "output_tokens": 3645, "cache_read": 2160, "cache_create": 1111, "total_tokens": 11177, "primary_model": "haiku", "estimated_cost": 0.0219, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 8, "Edit": 6, "Write": 2, "Glob": 2, "Grep": 4, "Bash": 2}, "message_count": 34}, {"session_id": "demo-0069", "project": "web-app", "date": "2026-04-30", "datetime": "2026-04-30T12:04:00Z", "duration_min": 130.9, "input_tokens": 10155, "output_tokens": 3306, "cache_read": 4537, "cache_create": 1849, "total_tokens": 13461, "primary_model": "sonnet", "estimated_cost": 0.0883, "entrypoint": "ide", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"WebSearch": 2, "WebFetch": 2, "Read": 3, "Bash": 1}, "message_count": 16}, {"session_id": "demo-0018", "project": "api-service", "date": "2026-04-30", "datetime": "2026-04-30T21:21:00Z", "duration_min": 19.3, "input_tokens": 12785, "output_tokens": 5288, "cache_read": 6463, "cache_create": 1071, "total_tokens": 18073, "primary_model": "sonnet", "estimated_cost": 0.1236, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {}, "message_count": 39}, {"session_id": "demo-0039", "project": "api-service", "date": "2026-05-03", "datetime": "2026-05-03T07:12:00Z", "duration_min": 20.2, "input_tokens": 7064, "output_tokens": 1197, "cache_read": 1615, "cache_create": 806, "total_tokens": 8261, "primary_model": "sonnet", "estimated_cost": 0.0427, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "max_tokens", "tools": {"Read": 8, "Edit": 4, "Write": 2, "Glob": 2, "Grep": 5, "Bash": 2}, "message_count": 5}, {"session_id": "demo-0020", "project": "api-service", "date": "2026-05-03", "datetime": "2026-05-03T10:55:00Z", "duration_min": 2.0, "input_tokens": 8807, "output_tokens": 3361, "cache_read": 1769, "cache_create": 587, "total_tokens": 12168, "primary_model": "sonnet", "estimated_cost": 0.0796, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"Read": 4, "Edit": 6, "Write": 1, "Glob": 3, "Grep": 2, "Bash": 1}, "message_count": 21}, {"session_id": "demo-0085", "project": "api-service", "date": "2026-05-04", "datetime": "2026-05-04T10:20:00Z", "duration_min": 38.4, "input_tokens": 5162, "output_tokens": 593, "cache_read": 1757, "cache_create": 491, "total_tokens": 5755, "primary_model": "haiku", "estimated_cost": 0.0071, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 4, "Edit": 8, "Write": 1, "Glob": 2, "Grep": 2, "Bash": 1}, "message_count": 10}, {"session_id": "demo-0055", "project": "web-app", "date": "2026-05-04", "datetime": "2026-05-04T16:53:00Z", "duration_min": 142.4, "input_tokens": 3851, "output_tokens": 2662, "cache_read": 1823, "cache_create": 342, "total_tokens": 6513, "primary_model": "sonnet", "estimated_cost": 0.0533, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 7, "Glob": 6, "Grep": 4, "LS": 3, "Bash": 1, "skill/verify": 2, "agent/feature-dev:code-reviewer": 4}, "message_count": 13}, {"session_id": "demo-0021", "project": "api-service", "date": "2026-05-05", "datetime": "2026-05-05T20:40:00Z", "duration_min": 1.8, "input_tokens": 8530, "output_tokens": 1284, "cache_read": 2737, "cache_create": 2058, "total_tokens": 9814, "primary_model": "sonnet", "estimated_cost": 0.0534, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "max_tokens", "tools": {"WebSearch": 8, "WebFetch": 3, "Read": 3, "Bash": 1}, "message_count": 10}, {"session_id": "demo-0011", "project": "infra-scripts", "date": "2026-05-05", "datetime": "2026-05-05T21:28:00Z", "duration_min": 2.5, "input_tokens": 5732, "output_tokens": 2798, "cache_read": 3094, "cache_create": 974, "total_tokens": 8530, "primary_model": "opus", "estimated_cost": 0.3187, "entrypoint": "unknown", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 14, "Glob": 6, "Grep": 9, "LS": 2, "Bash": 1}, "message_count": 31}, {"session_id": "demo-0089", "project": "web-app", "date": "2026-05-07", "datetime": "2026-05-07T15:08:00Z", "duration_min": 6.0, "input_tokens": 7788, "output_tokens": 2046, "cache_read": 2630, "cache_create": 1020, "total_tokens": 9834, "primary_model": "mixed", "estimated_cost": 0.0587, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"Bash": 8, "Read": 4, "Glob": 2, "Write": 1}, "message_count": 11}, {"session_id": "demo-0017", "project": "research", "date": "2026-05-08", "datetime": "2026-05-08T16:23:00Z", "duration_min": 1.9, "input_tokens": 10728, "output_tokens": 4846, "cache_read": 3931, "cache_create": 2256, "total_tokens": 15574, "primary_model": "sonnet", "estimated_cost": 0.1145, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 8, "Edit": 4, "Write": 2, "Glob": 1, "Grep": 2, "Bash": 1}, "message_count": 37}, {"session_id": "demo-0030", "project": "research", "date": "2026-05-09", "datetime": "2026-05-09T07:39:00Z", "duration_min": 3.0, "input_tokens": 14484, "output_tokens": 2738, "cache_read": 7280, "cache_create": 2670, "total_tokens": 17222, "primary_model": "sonnet", "estimated_cost": 0.0967, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 23, "Glob": 4, "Grep": 7, "LS": 3, "Bash": 1}, "message_count": 9}, {"session_id": "demo-0074", "project": "research", "date": "2026-05-09", "datetime": "2026-05-09T10:20:00Z", "duration_min": 1.4, "input_tokens": 7994, "output_tokens": 1667, "cache_read": 4776, "cache_create": 1795, "total_tokens": 9661, "primary_model": "opus", "estimated_cost": 0.2858, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 4, "Glob": 5, "Grep": 5, "LS": 3, "Bash": 1}, "message_count": 13}, {"session_id": "demo-0034", "project": "research", "date": "2026-05-11", "datetime": "2026-05-11T07:53:00Z", "duration_min": 1.7, "input_tokens": 10321, "output_tokens": 2506, "cache_read": 3735, "cache_create": 2169, "total_tokens": 12827, "primary_model": "sonnet", "estimated_cost": 0.0778, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {}, "message_count": 38}, {"session_id": "demo-0058", "project": "research", "date": "2026-05-11", "datetime": "2026-05-11T13:02:00Z", "duration_min": 11.1, "input_tokens": 8587, "output_tokens": 1498, "cache_read": 1650, "cache_create": 933, "total_tokens": 10085, "primary_model": "sonnet", "estimated_cost": 0.0522, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"WebSearch": 2, "WebFetch": 3, "Read": 5, "Bash": 1, "skill/code-review": 4}, "message_count": 18}, {"session_id": "demo-0050", "project": "infra-scripts", "date": "2026-05-13", "datetime": "2026-05-13T14:44:00Z", "duration_min": 2.4, "input_tokens": 5133, "output_tokens": 1842, "cache_read": 2285, "cache_create": 1111, "total_tokens": 6975, "primary_model": "sonnet", "estimated_cost": 0.0479, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 9, "Edit": 6, "Write": 2, "Glob": 3, "Grep": 6, "Bash": 1}, "message_count": 20}, {"session_id": "demo-0033", "project": "research", "date": "2026-05-13", "datetime": "2026-05-13T14:52:00Z", "duration_min": 12.2, "input_tokens": 6296, "output_tokens": 3808, "cache_read": 795, "cache_create": 1079, "total_tokens": 10104, "primary_model": "sonnet", "estimated_cost": 0.0803, "entrypoint": "ide", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {}, "message_count": 20}, {"session_id": "demo-0047", "project": "data-pipeline", "date": "2026-05-14", "datetime": "2026-05-14T21:36:00Z", "duration_min": 2.0, "input_tokens": 4267, "output_tokens": 2335, "cache_read": 2470, "cache_create": 241, "total_tokens": 6602, "primary_model": "sonnet", "estimated_cost": 0.0495, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "max_tokens", "tools": {"skill/verify": 4, "agent/feature-dev:code-reviewer": 3}, "message_count": 25}, {"session_id": "demo-0049", "project": "web-app", "date": "2026-05-15", "datetime": "2026-05-15T10:20:00Z", "duration_min": 3.3, "input_tokens": 11755, "output_tokens": 781, "cache_read": 4789, "cache_create": 710, "total_tokens": 12536, "primary_model": "sonnet", "estimated_cost": 0.0511, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"Read": 16, "Glob": 5, "Grep": 7, "LS": 4, "Bash": 1, "skill/verify": 2}, "message_count": 16}, {"session_id": "demo-0045", "project": "data-pipeline", "date": "2026-05-16", "datetime": "2026-05-16T15:05:00Z", "duration_min": 1.9, "input_tokens": 15098, "output_tokens": 5596, "cache_read": 7252, "cache_create": 2048, "total_tokens": 20694, "primary_model": "sonnet", "estimated_cost": 0.1391, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {}, "message_count": 6}, {"session_id": "demo-0044", "project": "infra-scripts", "date": "2026-05-18", "datetime": "2026-05-18T10:11:00Z", "duration_min": 2.1, "input_tokens": 10587, "output_tokens": 3707, "cache_read": 4174, "cache_create": 1101, "total_tokens": 14294, "primary_model": "opus", "estimated_cost": 0.4637, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"WebSearch": 4, "WebFetch": 2, "Read": 2, "Bash": 1}, "message_count": 21}, {"session_id": "demo-0086", "project": "web-app", "date": "2026-05-19", "datetime": "2026-05-19T17:47:00Z", "duration_min": 1.0, "input_tokens": 15694, "output_tokens": 3451, "cache_read": 2921, "cache_create": 1678, "total_tokens": 19145, "primary_model": "opus", "estimated_cost": 0.5301, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"agent/general-purpose": 2}, "message_count": 8}, {"session_id": "demo-0053", "project": "research", "date": "2026-05-22", "datetime": "2026-05-22T22:59:00Z", "duration_min": 3.2, "input_tokens": 8347, "output_tokens": 3290, "cache_read": 1362, "cache_create": 1003, "total_tokens": 11637, "primary_model": "sonnet", "estimated_cost": 0.0786, "entrypoint": "ide", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {}, "message_count": 35}, {"session_id": "demo-0035", "project": "research", "date": "2026-05-23", "datetime": "2026-05-23T11:47:00Z", "duration_min": 2.0, "input_tokens": 7130, "output_tokens": 2506, "cache_read": 4205, "cache_create": 468, "total_tokens": 9636, "primary_model": "sonnet", "estimated_cost": 0.062, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 12, "Read": 1, "Glob": 2, "Write": 1, "skill/verify": 1}, "message_count": 7}, {"session_id": "demo-0025", "project": "infra-scripts", "date": "2026-05-24", "datetime": "2026-05-24T07:13:00Z", "duration_min": 3.8, "input_tokens": 6160, "output_tokens": 2607, "cache_read": 3613, "cache_create": 1091, "total_tokens": 8767, "primary_model": "mixed", "estimated_cost": 0.0628, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 5, "Edit": 7, "Write": 2, "Glob": 3, "Grep": 4, "Bash": 1}, "message_count": 25}, {"session_id": "demo-0038", "project": "infra-scripts", "date": "2026-05-26", "datetime": "2026-05-26T10:04:00Z", "duration_min": 12.0, "input_tokens": 6492, "output_tokens": 100, "cache_read": 3451, "cache_create": 1614, "total_tokens": 6592, "primary_model": "sonnet", "estimated_cost": 0.0281, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 6, "Edit": 8, "Write": 1, "Glob": 3, "Grep": 3, "Bash": 1, "skill/frontend-design:frontend-design": 3}, "message_count": 33}, {"session_id": "demo-0051", "project": "api-service", "date": "2026-05-26", "datetime": "2026-05-26T12:15:00Z", "duration_min": 143.4, "input_tokens": 13879, "output_tokens": 2866, "cache_read": 7935, "cache_create": 1657, "total_tokens": 16745, "primary_model": "opus", "estimated_cost": 0.4661, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"WebSearch": 2, "WebFetch": 2, "Read": 3, "Bash": 1, "skill/frontend-design:frontend-design": 3}, "message_count": 15}, {"session_id": "demo-0056", "project": "research", "date": "2026-05-26", "datetime": "2026-05-26T16:49:00Z", "duration_min": 2.6, "input_tokens": 8037, "output_tokens": 3033, "cache_read": 1591, "cache_create": 753, "total_tokens": 11070, "primary_model": "sonnet", "estimated_cost": 0.0729, "entrypoint": "cli", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {"Bash": 12, "Read": 2, "Glob": 2, "Write": 1, "agent/general-purpose": 2}, "message_count": 11}, {"session_id": "demo-0043", "project": "web-app", "date": "2026-05-27", "datetime": "2026-05-27T11:29:00Z", "duration_min": 2.1, "input_tokens": 3331, "output_tokens": 2390, "cache_read": 1619, "cache_create": 564, "total_tokens": 5721, "primary_model": "sonnet", "estimated_cost": 0.0484, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Bash": 4, "Read": 1, "Glob": 3, "Write": 1, "skill/code-review": 1}, "message_count": 14}, {"session_id": "demo-0042", "project": "web-app", "date": "2026-05-29", "datetime": "2026-05-29T15:15:00Z", "duration_min": 1.7, "input_tokens": 10253, "output_tokens": 3560, "cache_read": 2449, "cache_create": 954, "total_tokens": 13813, "primary_model": "sonnet", "estimated_cost": 0.0885, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 9, "Edit": 6, "Write": 1, "Glob": 2, "Grep": 3, "Bash": 1}, "message_count": 8}, {"session_id": "demo-0054", "project": "api-service", "date": "2026-05-29", "datetime": "2026-05-29T16:30:00Z", "duration_min": 12.3, "input_tokens": 11112, "output_tokens": 2498, "cache_read": 2656, "cache_create": 1528, "total_tokens": 13610, "primary_model": "opus", "estimated_cost": 0.3867, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "max_tokens", "tools": {"WebSearch": 9, "WebFetch": 3, "Read": 2, "Bash": 1}, "message_count": 3}, {"session_id": "demo-0057", "project": "web-app", "date": "2026-06-03", "datetime": "2026-06-03T07:14:00Z", "duration_min": 2.5, "input_tokens": 11912, "output_tokens": 1425, "cache_read": 4084, "cache_create": 1201, "total_tokens": 13337, "primary_model": "sonnet", "estimated_cost": 0.0628, "entrypoint": "ide", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {}, "message_count": 39}, {"session_id": "demo-0040", "project": "infra-scripts", "date": "2026-06-05", "datetime": "2026-06-05T08:15:00Z", "duration_min": 19.4, "input_tokens": 10422, "output_tokens": 2323, "cache_read": 4193, "cache_create": 757, "total_tokens": 12745, "primary_model": "opus", "estimated_cost": 0.351, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"skill/code-review": 2, "agent/feature-dev:code-reviewer": 2}, "message_count": 36}, {"session_id": "demo-0037", "project": "research", "date": "2026-06-05", "datetime": "2026-06-05T08:40:00Z", "duration_min": 51.6, "input_tokens": 11931, "output_tokens": 2879, "cache_read": 4436, "cache_create": 2815, "total_tokens": 14810, "primary_model": "sonnet", "estimated_cost": 0.0909, "entrypoint": "ide", "permission_mode": "bypassPermissions", "stop_reason": "end_turn", "tools": {}, "message_count": 40}, {"session_id": "demo-0052", "project": "data-pipeline", "date": "2026-06-17", "datetime": "2026-06-17T22:54:00Z", "duration_min": 11.1, "input_tokens": 2433, "output_tokens": 2691, "cache_read": 837, "cache_create": 364, "total_tokens": 5124, "primary_model": "sonnet", "estimated_cost": 0.0493, "entrypoint": "cli", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"skill/code-review": 4}, "message_count": 27}, {"session_id": "demo-0059", "project": "api-service", "date": "2026-06-27", "datetime": "2026-06-27T21:01:00Z", "duration_min": 116.0, "input_tokens": 7816, "output_tokens": 2292, "cache_read": 1537, "cache_create": 519, "total_tokens": 10108, "primary_model": "sonnet", "estimated_cost": 0.0602, "entrypoint": "ide", "permission_mode": "default", "stop_reason": "end_turn", "tools": {"Read": 14, "Glob": 4, "Grep": 8, "LS": 3, "Bash": 1}, "message_count": 22}];
+
+const MODEL_COLORS    = { sonnet:'#4f9eff', opus:'#a78bfa', haiku:'#34d399', mixed:'#fb923c' };
+const MODEL_COLORS_BG = { sonnet:'rgba(79,158,255,.15)', opus:'rgba(167,139,250,.15)', haiku:'rgba(52,211,153,.15)', mixed:'rgba(251,146,60,.15)' };
+const PALETTE = ['#4f9eff','#34d399','#fb923c','#a78bfa','#ff5c73','#6ab0ff','#e3b341','#c084fc','#fda4af','#4ade80'];
+const DUR_EDGES  = [0,5,15,30,60,120,9999];
+const DUR_LABELS = ['<5 min','5-15 min','15-30 min','30-60 min','1-2 h','>2 h'];
+
+// ── i18n ─────────────────────────────────────────────────────────────────────
+const I18N = {
+  es: {
+    meta_generated:     'generado',
+    btn_all:            'Todo',
+    kpi_sessions:       'Sesiones',
+    kpi_tokens:         'Tokens totales',
+    kpi_cost:           'Costo estimado',
+    kpi_projects:       'Proyectos',
+    kpi_duration:       'Duracion media',
+    sub_tokens:         'input + output',
+    sub_cost:           'USD aproximado',
+    sub_duration:       'por sesion',
+    chart_time:         'Tokens por dia (input / output / cache)',
+    chart_line:         'Costo diario + tasa de cache',
+    chart_proj:         'Top proyectos (tokens)',
+    chart_bubble:       'Proyectos — sesiones vs costo',
+    chart_model:        'Modelo primario por sesion',
+    chart_radar:        'Perfil de sesion por modelo',
+    chart_dur:          'Distribucion de duracion por modelo',
+    chart_catproj:      'Tipo de sesion por proyecto',
+    radar_labels:       ['Input','Output','Cache','Duracion','Mensajes','Tools'],
+    chart_entrypoint:   'Entrypoint por sesion',
+    chart_perm:         'Modo de permisos',
+    chart_stopreason:   'Razon de fin de sesion',
+    chart_category:     'Tipo de sesion',
+    categories: { coding:'Programacion', exploration:'Exploracion', automation:'Automatizacion', research:'Investigacion', conversation:'Conversacion', mixed:'Mixto' },
+    chart_tools:        'Top 10 herramientas (llamadas totales)',
+    chart_skills:       'Skills & Agents por proyecto',
+    th_skill:           'Skill / Agent',
+    th_calls:           'Llamadas',
+    th_uniq_sessions:   'Sesiones',
+    th_last_used:       'Último uso',
+    no_skills:          'Sin skills ni agentes en este período.',
+    tbl_proj_title:     'Costo por proyecto',
+    th_pct_total:       '% total',
+    chart_heatmap:      'Actividad por hora y día de semana',
+    days:               ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'],
+    axis_tokens:        'Tokens',
+    axis_usd:           'USD',
+    ds_input:           'Input',
+    ds_output:          'Output',
+    ds_cache_read:      'Cache read',
+    ds_cache_create:    'Cache create',
+    ds_cost:            'Costo USD',
+    tooltip_sessions:   'sesiones: ',
+    tbl_model_title:    'Costo por modelo',
+    th_model:           'Modelo',
+    th_sessions:        'Sesiones',
+    th_input:           'Input (k)',
+    th_output:          'Output (k)',
+    th_cache_read:      'Cache read (k)',
+    th_cache_create:    'Cache create (k)',
+    th_cost_usd:        'Costo USD',
+    tbl_sessions_title: 'Sesiones recientes',
+    th_date:            'Fecha',
+    th_project:         'Proyecto',
+    th_dur:             'Dur.',
+    th_model_col:       'Modelo',
+    th_tokens:          'Tokens',
+    th_cost:            'Costo',
+    th_stop_reason:     'Stop reason',
+    showing_n_of:       'mostrando %n% de %total%',
+    n_sessions:         '%n% sesiones',
+    show_all:           'Ver todas (%n% sesiones)',
+    show_less:          'Ver menos',
+    tips_title:         'Consejos de uso',
+    no_tips:            'Sin alertas — todo se ve bien.',
+    no_data:            'Sin datos para el filtro seleccionado.',
+    claude_title:       'Analisis con Claude',
+    claude_desc_strong: 'Copia un prompt pre-armado',
+    claude_desc:        'con todas tus metricas y pegalo en Claude para obtener analisis mas profundo, recomendaciones personalizadas y patrones que las reglas automaticas no capturan.',
+    btn_copy:           'Copiar prompt para Claude',
+    btn_copied:         '¡Copiado!',
+    btn_preview:        'Ver prompt',
+    btn_preview_hide:   'Ocultar',
+    info: {
+      kpi_sessions:       'Total de conversaciones con Claude Code en el período. Una sesión = un archivo JSONL en ~/.claude/projects/.',
+      kpi_tokens:         'Suma de tokens input + output en todas las sesiones. Los tokens de cache se muestran en la gráfica de tiempo.',
+      kpi_cost:           'Estimación basada en precios de Anthropic (actualizado 2026-05). Puede diferir del cobro real si los precios cambiaron.',
+      kpi_projects:       'Proyectos distintos con actividad. Se detecta por el nombre del directorio de trabajo (cwd) de cada sesión.',
+      kpi_duration:       'Promedio del tiempo entre el primer y último mensaje de cada sesión. No incluye tiempo de inactividad dentro de la sesión.',
+      chart_time:         'Tokens por día separados por tipo (input, output, cache read, cache create). El eje derecho (rojo) muestra el costo en USD.',
+      chart_proj:         'Top 10 proyectos por tokens totales. El tooltip al hacer hover muestra el número de sesiones y el costo en USD.',
+      chart_model:        'Distribución de sesiones por modelo principal. Mixed = sesión sin modelo dominante (opus + otros).',
+      chart_dur:          'Distribución de duración de sesiones por rango de tiempo, apiladas por modelo. Permite comparar si Opus tiende a sesiones más largas que Haiku.',
+      chart_entrypoint:   'Cómo se inició cada sesión: cli (terminal), ide (extensión VS Code/JetBrains), u otros puntos de entrada.',
+      chart_perm:         'Modo de permisos más frecuente por sesión. default requiere confirmación para acciones peligrosas; bypassPermissions ejecuta sin preguntar.',
+      chart_stopreason:   'Por qué terminó la sesión. end_turn = terminó naturalmente; max_tokens = alcanzó el límite de contexto (ver consejos de uso).',
+      chart_category:     'Tipo de sesión según herramientas usadas: coding (edit/write ≥20%), exploration (read/glob ≥50%), automation (bash ≥50%), research (websearch), conversation (sin tools), mixed.',
+      chart_tools:        'Top 10 herramientas por llamadas totales. skill/* y agent/* aparecen con su nombre específico (ej. skill/verify, agent/code-reviewer).',
+      chart_catproj:      'Porcentaje de cada tipo de sesión por proyecto (top 8 por número de sesiones). Muestra el perfil de trabajo de cada repo.',
+      chart_skills:       'Skills y agentes invocados agrupados por proyecto, con llamadas totales, sesiones únicas donde se usó, y fecha del último uso.',
+      chart_heatmap:      'Actividad por hora del día y día de la semana. Cada celda = número de sesiones iniciadas en esa franja horaria.',
+      tbl_proj_title:     'Costo y uso por proyecto en el período, ordenable por cualquier columna. % total = porcentaje del costo total del período seleccionado.',
+      tbl_model_title:    'Desglose de tokens y costo por modelo. Cache read y cache create se muestran por separado para ver el impacto del caching.',
+      tbl_sessions_title: 'Historial de sesiones con métricas individuales. Haz click en los encabezados para ordenar por cualquier columna.',
+    },
+  },
+  en: {
+    meta_generated:     'generated',
+    btn_all:            'All',
+    kpi_sessions:       'Sessions',
+    kpi_tokens:         'Total tokens',
+    kpi_cost:           'Estimated cost',
+    kpi_projects:       'Projects',
+    kpi_duration:       'Avg duration',
+    sub_tokens:         'input + output',
+    sub_cost:           'approx. USD',
+    sub_duration:       'per session',
+    chart_time:         'Tokens per day (input / output / cache)',
+    chart_line:         'Daily cost + cache hit rate',
+    chart_proj:         'Top projects (tokens)',
+    chart_bubble:       'Projects — sessions vs cost',
+    chart_model:        'Primary model per session',
+    chart_radar:        'Session profile by model',
+    chart_dur:          'Session duration by model',
+    chart_catproj:      'Session type by project',
+    radar_labels:       ['Input','Output','Cache','Duration','Messages','Tools'],
+    chart_entrypoint:   'Entrypoint by session',
+    chart_perm:         'Permission mode',
+    chart_stopreason:   'Session end reason',
+    chart_category:     'Session type',
+    categories: { coding:'Coding', exploration:'Exploration', automation:'Automation', research:'Research', conversation:'Conversation', mixed:'Mixed' },
+    chart_tools:        'Top 10 tools (total calls)',
+    chart_skills:       'Skills & Agents by project',
+    th_skill:           'Skill / Agent',
+    th_calls:           'Calls',
+    th_uniq_sessions:   'Sessions',
+    th_last_used:       'Last used',
+    no_skills:          'No skills or agents in this period.',
+    tbl_proj_title:     'Cost by project',
+    th_pct_total:       '% total',
+    chart_heatmap:      'Activity by hour and day of week',
+    days:               ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+    axis_tokens:        'Tokens',
+    axis_usd:           'USD',
+    ds_input:           'Input',
+    ds_output:          'Output',
+    ds_cache_read:      'Cache read',
+    ds_cache_create:    'Cache create',
+    ds_cost:            'Cost USD',
+    tooltip_sessions:   'sessions: ',
+    tbl_model_title:    'Cost by model',
+    th_model:           'Model',
+    th_sessions:        'Sessions',
+    th_input:           'Input (k)',
+    th_output:          'Output (k)',
+    th_cache_read:      'Cache read (k)',
+    th_cache_create:    'Cache create (k)',
+    th_cost_usd:        'Cost USD',
+    tbl_sessions_title: 'Recent sessions',
+    th_date:            'Date',
+    th_project:         'Project',
+    th_dur:             'Dur.',
+    th_model_col:       'Model',
+    th_tokens:          'Tokens',
+    th_cost:            'Cost',
+    th_stop_reason:     'Stop reason',
+    showing_n_of:       'showing %n% of %total%',
+    n_sessions:         '%n% sessions',
+    show_all:           'Show all (%n% sessions)',
+    show_less:          'Show less',
+    tips_title:         'Usage tips',
+    no_tips:            'No alerts — everything looks good.',
+    no_data:            'No data for the selected filter.',
+    claude_title:       'Analysis with Claude',
+    claude_desc_strong: 'Copy a pre-built prompt',
+    claude_desc:        "with all your metrics and paste it into Claude for deeper analysis, personalized recommendations, and patterns that automatic rules don't capture.",
+    btn_copy:           'Copy prompt for Claude',
+    btn_copied:         'Copied!',
+    btn_preview:        'Preview prompt',
+    btn_preview_hide:   'Hide',
+    info: {
+      kpi_sessions:       'Total conversations with Claude Code in the selected period. One session = one JSONL file in ~/.claude/projects/.',
+      kpi_tokens:         'Input + output tokens across all sessions. Cache tokens are shown separately in the time chart.',
+      kpi_cost:           'Estimate based on Anthropic pricing (updated 2026-05). May differ from actual charges if prices changed.',
+      kpi_projects:       'Distinct projects with activity. Detected from the working directory (cwd) of each session.',
+      kpi_duration:       'Average time between first and last message per session. Does not include idle time within a session.',
+      chart_time:         'Tokens per day split by type (input, output, cache read, cache create). Right axis (red) shows USD cost.',
+      chart_proj:         'Top 10 projects by total tokens. Hover a bar to see session count and USD cost in the tooltip.',
+      chart_model:        'Session distribution by primary model. Mixed = session with no dominant model (opus + others).',
+      chart_dur:          'Session duration distribution stacked by model. Shows whether Opus tends toward longer sessions than Haiku.',
+      chart_entrypoint:   'How each session was started: cli (terminal), ide (VS Code/JetBrains extension), or other entry points.',
+      chart_perm:         'Most frequent permission mode per session. default asks before dangerous actions; bypassPermissions runs without prompting.',
+      chart_stopreason:   'Why the session ended. end_turn = finished naturally; max_tokens = hit context limit (see usage tips).',
+      chart_category:     'Session type by tool usage: coding (edit/write ≥20%), exploration (read/glob ≥50%), automation (bash ≥50%), research (websearch), conversation (no tools), mixed.',
+      chart_tools:        'Top 10 tools by total calls. skill/* and agent/* appear with their specific name (e.g. skill/verify, agent/code-reviewer).',
+      chart_catproj:      'Percentage of each session type per project (top 8 by sessions). Shows the work profile of each repository.',
+      chart_skills:       'Skills and agents invoked grouped by project, with total calls, unique sessions where used, and last used date.',
+      chart_heatmap:      'Activity by hour of day and day of week. Each cell = number of sessions started in that time slot.',
+      tbl_proj_title:     'Cost and usage by project in the period, sortable by any column. % total = share of total cost in the selected period.',
+      tbl_model_title:    'Token and cost breakdown by model. Cache read and cache create are shown separately to measure caching impact.',
+      tbl_sessions_title: 'Session history with individual metrics. Click any column header to sort.',
+    },
+  },
+};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let activeDays   = 30;
+let activeModels = new Set(['opus','sonnet','haiku','mixed']);
+let theme = localStorage.getItem('theme') || 'dark';
+let lang  = localStorage.getItem('lang')  || 'es';
+
+// ── Filter helpers ────────────────────────────────────────────────────────────
+function filterSessions() {
+  const cutoff = activeDays > 0
+    ? new Date(Date.now() - activeDays * 86400 * 1000)
+    : null;
+  return ALL_SESSIONS.filter(s => {
+    if (cutoff && new Date(s.date + 'T00:00:00') < cutoff) return false;
+    return activeModels.has(s.primary_model);
+  });
+}
+
+function setDateFilter(days) {
+  activeDays = days;
+  document.querySelectorAll('.filter-group .filter-btn').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.days) === days);
+  });
+  applyFilters();
+}
+
+function toggleModel(model) {
+  if (activeModels.has(model)) { activeModels.delete(model); }
+  else { activeModels.add(model); }
+  applyFilters();
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function setTheme(t) {
+  theme = t;
+  localStorage.setItem('theme', t);
+  document.documentElement.setAttribute('data-theme', t);
+  const isDark = t === 'dark';
+  Chart.defaults.color       = isDark ? '#7fa9d4' : '#5b7fa6';
+  Chart.defaults.borderColor = isDark ? 'rgba(79,158,255,.15)' : 'rgba(21,101,192,.15)';
+  document.getElementById('btn-theme').textContent = isDark ? '☀' : '☾';
+  Object.values(charts).forEach(c => c.destroy());
+  const _tf = filterSessions();
+  initCharts(_tf);
+  renderHeatmap(_tf);
+}
+
+function toggleTheme() { setTheme(theme === 'dark' ? 'light' : 'dark'); }
+
+// ── Language ──────────────────────────────────────────────────────────────────
+function setLang(l) {
+  lang = l;
+  localStorage.setItem('lang', l);
+  document.documentElement.lang = l;
+  document.getElementById('btn-lang').textContent = l === 'es' ? 'EN' : 'ES';
+  const _lf   = filterSessions();
+  const _tips = computeTips(_lf);
+  applyLang();
+  updateChartLabels(_lf);
+  renderTips(_lf, _tips);
+  updateSessionsTable(_lf);
+  renderSkillsBody();
+  renderHeatmap(_lf);
+  _refreshPromptPreview(_lf, _tips);
+}
+
+function toggleLang() { setLang(lang === 'es' ? 'en' : 'es'); }
+
+function applyLang() {
+  const i = I18N[lang];
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.dataset.i18n;
+    if (key in i) el.textContent = i[key];
+  });
+  document.getElementById('btn-copy').textContent    = i.btn_copy;
+  document.getElementById('btn-preview').textContent = showPromptPreview ? i.btn_preview_hide : i.btn_preview;
+  updateInfoTexts();
+}
+
+// ── Info panels ───────────────────────────────────────────────────────────────
+let _infoAll = false;
+
+function updateInfoTexts() {
+  const info = I18N[lang].info || {};
+  document.querySelectorAll('.info-panel[data-info]').forEach(el => {
+    const text = info[el.dataset.info] || '';
+    el.textContent = text;
+    const btn = el.closest('.card, .stat')?.querySelector('.info-btn');
+    if (btn) btn.style.display = text ? '' : 'none';
+  });
+}
+
+function toggleInfo(container) {
+  const panel = container.querySelector('.info-panel');
+  const btn   = container.querySelector('.info-btn');
+  panel.hidden = !panel.hidden;
+  btn.classList.toggle('active', !panel.hidden);
+}
+
+function toggleAllInfo() {
+  _infoAll = !_infoAll;
+  document.querySelectorAll('.info-panel').forEach(p => { p.hidden = !_infoAll; });
+  document.querySelectorAll('.info-btn').forEach(b => b.classList.toggle('active', _infoAll));
+  document.getElementById('btn-info').classList.toggle('active', _infoAll);
+}
+
+function initInfoPanels() {
+  document.querySelectorAll('.card h2[data-i18n]').forEach(h2 => {
+    const card = h2.closest('.card');
+    _addInfoPanel(card, h2, h2.dataset.i18n);
+  });
+  document.querySelectorAll('.stat').forEach(stat => {
+    const lbl = stat.querySelector('.lbl[data-i18n]');
+    if (lbl) _addInfoPanel(stat, lbl, lbl.dataset.i18n);
+  });
+  updateInfoTexts();
+}
+
+function _addInfoPanel(container, anchor, key) {
+  const btn = document.createElement('button');
+  btn.className = 'info-btn';
+  btn.textContent = 'ℹ';
+  btn.onclick = () => toggleInfo(container);
+  container.appendChild(btn);
+
+  const panel = document.createElement('div');
+  panel.className = 'info-panel';
+  panel.hidden = true;
+  panel.dataset.info = key;
+  anchor.insertAdjacentElement('afterend', panel);
+}
+
+// ── Aggregation helpers ───────────────────────────────────────────────────────
+function aggrByDate(sessions) {
+  const map = {};
+  for (const s of sessions) {
+    if (!map[s.date]) map[s.date] = {input:0,output:0,cache_read:0,cache_create:0,cost:0,sessions:0};
+    const d = map[s.date];
+    d.input        += s.input_tokens;
+    d.output       += s.output_tokens;
+    d.cache_read   += s.cache_read;
+    d.cache_create += s.cache_create;
+    d.cost         += s.estimated_cost;
+    d.sessions     += 1;
+  }
+  const dates = Object.keys(map).sort();
+  return {dates, map};
+}
+
+
+function aggrByModel(sessions) {
+  const map = {};
+  for (const s of sessions) {
+    if (!map[s.primary_model]) map[s.primary_model] = {sessions:0,input:0,output:0,cache_read:0,cache_create:0,cost:0};
+    const m = map[s.primary_model];
+    m.sessions     += 1;
+    m.input        += s.input_tokens;
+    m.output       += s.output_tokens;
+    m.cache_read   += s.cache_read;
+    m.cache_create += s.cache_create;
+    m.cost         += s.estimated_cost;
+  }
+  return map;
+}
+
+
+function aggrDurStacked(sessions) {
+  const present = {};
+  for (const s of sessions) { if (s.primary_model) present[s.primary_model] = true; }
+  const models = ['sonnet','opus','haiku','mixed'].filter(m => present[m]);
+  const map = {};
+  models.forEach(m => map[m] = new Array(DUR_LABELS.length).fill(0));
+  for (const s of sessions) {
+    const m = s.primary_model;
+    if (!map[m]) continue;
+    for (let i = 0; i < DUR_EDGES.length - 1; i++) {
+      if (s.duration_min >= DUR_EDGES[i] && s.duration_min < DUR_EDGES[i+1]) { map[m][i]++; break; }
+    }
+  }
+  return models.map(m => ({
+    label: m,
+    data: map[m],
+    backgroundColor: (MODEL_COLORS_BG[m]||'rgba(128,128,128,.15)').replace('.15)','.55)'),
+    borderColor: MODEL_COLORS[m]||'#7d8590',
+    borderWidth:1, borderRadius:2,
+  }));
+}
+
+
+function aggrCatByProject(sessions) {
+  const CAT_ORDER = ['coding','exploration','automation','research','conversation','mixed'];
+  const map = {};
+  for (const s of sessions) {
+    if (s.project === 'temp') continue;
+    const p = s.project || 'unknown';
+    if (!map[p]) map[p] = {};
+    const cat = categorizeSession(s.tools || {});
+    map[p][cat] = (map[p][cat] || 0) + 1;
+  }
+  const topProjs = Object.entries(map)
+    .map(([p,cats]) => [p, Object.values(cats).reduce((a,b)=>a+b,0)])
+    .sort((a,b)=>b[1]-a[1]).slice(0,8).map(e=>e[0]);
+  return {
+    projects: topProjs,
+    datasets: CAT_ORDER.map(cat => ({
+      label: cat,
+      data: topProjs.map(p => {
+        const cats = map[p]||{};
+        const total = Object.values(cats).reduce((a,b)=>a+b,0)||1;
+        return +((cats[cat]||0)/total*100).toFixed(1);
+      }),
+      backgroundColor: (CAT_COLORS[cat]||'#888')+'bb',
+      borderColor: CAT_COLORS[cat]||'#888',
+      borderWidth: 0, borderRadius: 2,
+    })),
+  };
+}
+
+function aggrByField(sessions, field) {
+  const map = {};
+  for (const s of sessions) {
+    const v = s[field] || 'unknown';
+    map[v] = (map[v] || 0) + 1;
+  }
+  return map;
+}
+
+const CAT_COLORS = {
+  coding:      '#4f9eff',
+  exploration: '#34d399',
+  automation:  '#fb923c',
+  research:    '#a78bfa',
+  conversation:'#7fa9d4',
+  mixed:       '#ff5c73',
+};
+
+function categorizeSession(tools) {
+  const t = Object.fromEntries(Object.entries(tools).filter(([k]) => !k.startsWith('skill/') && !k.startsWith('agent/')));
+  const total = Object.values(t).reduce((a, b) => a + b, 0);
+  if (total === 0) return 'conversation';
+  const sum = (...names) => names.reduce((a, n) => a + (t[n] || 0), 0);
+  const web   = sum('WebSearch', 'WebFetch');
+  const bash  = sum('Bash', 'PowerShell');
+  const edits = sum('Edit', 'Write', 'NotebookEdit');
+  const reads = sum('Read', 'Glob', 'Grep', 'NotebookRead', 'LS');
+  if (web > 0)                                              return 'research';
+  if (edits / total >= 0.2)                                 return 'coding';
+  if (bash  / total >= 0.5 && edits / total < 0.1)         return 'automation';
+  if (reads / total >= 0.5 && edits / total < 0.1)         return 'exploration';
+  return 'mixed';
+}
+
+function aggrByCategory(sessions) {
+  const map = {};
+  for (const s of sessions) {
+    if (s.project === 'temp') continue;
+    const cat = categorizeSession(s.tools || {});
+    map[cat] = (map[cat] || 0) + 1;
+  }
+  return map;
+}
+
+function aggrTools(sessions) {
+  const map = {};
+  for (const s of sessions) {
+    for (const [tool, count] of Object.entries(s.tools || {})) {
+      map[tool] = (map[tool] || 0) + count;
+    }
+  }
+  return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 10);
+}
+
+// ── KPIs ──────────────────────────────────────────────────────────────────────
+function updateKPIs(sessions) {
+  const costEl = document.getElementById('s-cost');
+  const sessEl = document.getElementById('s-sessions');
+  if (!sessions.length) {
+    ['s-sessions','s-tokens','s-cost','s-projects','s-duration'].forEach(id =>
+      document.getElementById(id).textContent = '—');
+    [costEl, sessEl].forEach(el => el.closest('.stat').classList.remove('kpi-ok','kpi-warn'));
+    return;
+  }
+  const totalTokens = sessions.reduce((a,s) => a + s.total_tokens, 0);
+  const totalCost   = sessions.reduce((a,s) => a + s.estimated_cost, 0);
+  const projects    = new Set(sessions.map(s => s.project)).size;
+  const avgDur      = sessions.reduce((a,s) => a + s.duration_min, 0) / sessions.length;
+  document.getElementById('s-sessions').textContent = sessions.length.toLocaleString();
+  document.getElementById('s-tokens').textContent   = (totalTokens / 1000).toFixed(0) + 'k';
+  costEl.textContent     = '$' + totalCost.toFixed(2);
+  document.getElementById('s-projects').textContent = projects;
+  document.getElementById('s-duration').textContent = avgDur.toFixed(1) + ' min';
+
+  const setKpiColor = (el, ok, warn) => {
+    const stat = el.closest('.stat');
+    stat.classList.toggle('kpi-ok',   ok);
+    stat.classList.toggle('kpi-warn', warn);
+  };
+  setKpiColor(costEl, totalCost < 5, totalCost > 20);
+  setKpiColor(sessEl, sessions.length > 20, sessions.length < 5);
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+const charts = {};
+
+function initCharts(sessions) {
+  const i      = I18N[lang];
+  const isDark = theme === 'dark';
+  const GRID   = { color: isDark ? 'rgba(79,158,255,.1)' : 'rgba(21,101,192,.1)' };
+  const TICKS  = { color: isDark ? '#7fa9d4' : '#5b7fa6', font: { size:11, family:"'JetBrains Mono',monospace" } };
+
+  const {dates, map} = aggrByDate(sessions);
+  const proj   = aggrByProject(sessions).sort((a,b)=>b[2]-a[2]).slice(0,10);
+  const mCount = aggrByModel(sessions);
+  const mKeys  = Object.keys(mCount);
+
+  charts.time = new Chart(document.getElementById('cTime'), {
+    data: {
+      labels: dates,
+      datasets: [
+        { type:'bar',  label:i.ds_input,        data:dates.map(d=>map[d].input),        backgroundColor:'rgba(79,158,255,.45)', borderColor:'#4f9eff',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' },
+        { type:'bar',  label:i.ds_output,       data:dates.map(d=>map[d].output),       backgroundColor:'rgba(167,139,250,.45)',borderColor:'#a78bfa',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' },
+        { type:'bar',  label:i.ds_cache_read,   data:dates.map(d=>map[d].cache_read),   backgroundColor:'rgba(52,211,153,.4)',  borderColor:'#34d399',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' },
+        { type:'bar',  label:i.ds_cache_create, data:dates.map(d=>map[d].cache_create), backgroundColor:'rgba(251,146,60,.4)',  borderColor:'#fb923c',borderWidth:1,borderRadius:2,stack:'t',yAxisID:'y' },
+        { type:'line', label:i.ds_cost,         data:dates.map(d=>+map[d].cost.toFixed(4)), borderColor:'#ff5c73',backgroundColor:'transparent',borderWidth:1.5,pointRadius:2,tension:0.3,yAxisID:'y2' },
+      ],
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{font:{size:11},boxWidth:12}},
+        tooltip:{callbacks:{afterBody:ctx => ctx[0] ? [i.tooltip_sessions+(map[ctx[0].label]?.sessions??'')] : []}}
+      },
+      scales:{
+        x: {stacked:true,grid:GRID,ticks:TICKS},
+        y: {stacked:true,grid:GRID,ticks:TICKS,title:{display:true,text:i.axis_tokens,font:{size:10}}},
+        y2:{grid:{display:false},ticks:TICKS,position:'right',title:{display:true,text:i.axis_usd,color:'#f85149',font:{size:10}}},
+      },
+    },
+  });
+
+  charts.proj = new Chart(document.getElementById('cProj'), {
+    type:'bar',
+    data:{
+      labels:proj.map(e=>e[0]),
+      datasets:[{data:proj.map(e=>e[2]),backgroundColor:PALETTE,borderWidth:0,borderRadius:3}],
+    },
+    options:{
+      indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{afterLabel:ctx=>['sessions: '+proj[ctx.dataIndex][1],'cost: $'+proj[ctx.dataIndex][3].toFixed(2)]}}},
+      scales:{x:{grid:GRID,ticks:TICKS},y:{grid:{display:false},ticks:{...TICKS,font:{size:11}}}},
+    },
+  });
+
+  charts.model = new Chart(document.getElementById('cModel'), {
+    type:'bar',
+    data:{
+      labels:mKeys,
+      datasets:[{data:mKeys.map(m=>mCount[m].sessions),backgroundColor:mKeys.map(m=>MODEL_COLORS[m]||'#7d8590'),borderWidth:0,borderRadius:3}],
+    },
+    options:{
+      indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{grid:GRID,ticks:TICKS},y:{grid:{display:false},ticks:{...TICKS,font:{size:11}}}},
+    },
+  });
+
+  charts.dur = new Chart(document.getElementById('cDur'), {
+    type:'bar',
+    data:{labels:DUR_LABELS, datasets:aggrDurStacked(sessions)},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:6}}},scales:{x:{stacked:true,grid:GRID,ticks:TICKS},y:{stacked:true,grid:GRID,ticks:TICKS}}},
+  });
+
+  const entryMap   = aggrByField(sessions, 'entrypoint');
+  const permMap    = aggrByField(sessions, 'permission_mode');
+  const stopMap    = aggrByField(sessions, 'stop_reason');
+  const toolsTop10 = aggrTools(sessions);
+
+  const barOpts = () => ({
+    indexAxis:'y', responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{display:false}},
+    scales:{x:{grid:GRID,ticks:TICKS},y:{grid:{display:false},ticks:{...TICKS,font:{size:11}}}},
+  });
+
+  const doughnutOpts = () => ({
+    responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:8}}},
+  });
+
+  charts.entrypoint = new Chart(document.getElementById('cEntrypoint'), {
+    type:'doughnut',
+    data:{labels:Object.keys(entryMap),datasets:[{data:Object.values(entryMap),backgroundColor:PALETTE,borderWidth:0}]},
+    options:doughnutOpts(),
+  });
+
+  charts.perm = new Chart(document.getElementById('cPerm'), {
+    type:'doughnut',
+    data:{labels:Object.keys(permMap),datasets:[{data:Object.values(permMap),backgroundColor:PALETTE.slice(3),borderWidth:0}]},
+    options:doughnutOpts(),
+  });
+
+  charts.stopreason = new Chart(document.getElementById('cStopReason'), {
+    type:'doughnut',
+    data:{labels:Object.keys(stopMap),datasets:[{data:Object.values(stopMap),backgroundColor:['#34d399','#ff5c73','#e3b341','#a78bfa'],borderWidth:0}]},
+    options:doughnutOpts(),
+  });
+
+  const catMap  = aggrByCategory(sessions);
+  const catI    = I18N[lang].categories;
+  charts.category = new Chart(document.getElementById('cCategory'), {
+    type:'doughnut',
+    data:{labels:Object.keys(catMap).map(k=>catI[k]||k),datasets:[{data:Object.values(catMap),backgroundColor:Object.keys(catMap).map(k=>CAT_COLORS[k]||'#888'),borderWidth:0}]},
+    options:doughnutOpts(),
+  });
+
+  charts.tools = new Chart(document.getElementById('cTools'), {
+    type:'bar',
+    data:{
+      labels:toolsTop10.map(e=>e[0]),
+      datasets:[{data:toolsTop10.map(e=>e[1]),backgroundColor:'rgba(79,158,255,.45)',borderColor:'#4f9eff',borderWidth:1,borderRadius:3}],
+    },
+    options:barOpts(),
+  });
+
+  const catProj = aggrCatByProject(sessions);
+  const catI_cp = I18N[lang].categories;
+  charts.catproj = new Chart(document.getElementById('cCatProj'), {
+    type:'bar',
+    data:{
+      labels: catProj.projects,
+      datasets: catProj.datasets.map(ds => ({...ds, label: catI_cp[ds.label] || ds.label})),
+    },
+    options:{
+      indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:8}}},
+      scales:{
+        x:{stacked:true, grid:GRID, ticks:TICKS, max:100},
+        y:{stacked:true, grid:{display:false}, ticks:{...TICKS,font:{size:11}}},
+      },
+    },
+  });
+}
+
+// Splice-replace labels+data so Chart.js mutation tracking fires reliably,
+// then force a full re-render (no animation) to pick up axis changes.
+function _setBar(chart, labels, data, bg) {
+  const ds = chart.data.datasets[0];
+  chart.data.labels.splice(0, chart.data.labels.length, ...labels);
+  ds.data.splice(0, ds.data.length, ...data);
+  if (bg && bg.length) ds.backgroundColor = bg;
+  chart.update('none');
+}
+
+function _setPolar(chart, labels, data, colors) {
+  chart.data.labels.splice(0, chart.data.labels.length, ...labels);
+  const ds = chart.data.datasets[0];
+  ds.data.splice(0, ds.data.length, ...data);
+  if (colors && colors.length) ds.backgroundColor = colors;
+  chart.update('none');
+}
+
+
+function updateCharts(sessions) {
+  const i = I18N[lang];
+  const {dates, map} = aggrByDate(sessions);
+  const ds = charts.time.data.datasets;
+  charts.time.data.labels = dates;
+  ds[0].data = dates.map(d=>map[d].input);
+  ds[1].data = dates.map(d=>map[d].output);
+  ds[2].data = dates.map(d=>map[d].cache_read);
+  ds[3].data = dates.map(d=>map[d].cache_create);
+  ds[4].data = dates.map(d=>+map[d].cost.toFixed(4));
+  charts.time.options.plugins.tooltip.callbacks.afterBody =
+    ctx => ctx[0] ? [i.tooltip_sessions+(map[ctx[0].label]?.sessions??'')] : [];
+  charts.time.update();
+
+  const proj = aggrByProject(sessions).sort((a,b)=>b[2]-a[2]).slice(0,10);
+  charts.proj.options.plugins.tooltip.callbacks.afterLabel =
+    ctx => ['sessions: '+proj[ctx.dataIndex][1],'cost: $'+proj[ctx.dataIndex][3].toFixed(2)];
+  _setBar(charts.proj, proj.map(e=>e[0]), proj.map(e=>e[2]), PALETTE.slice(0, proj.length));
+
+  const mCount = aggrByModel(sessions);
+  const mKeys  = Object.keys(mCount);
+  _setBar(charts.model, mKeys, mKeys.map(m=>mCount[m].sessions), mKeys.map(m=>MODEL_COLORS[m]||'#7d8590'));
+
+  charts.dur.data.datasets = aggrDurStacked(sessions);
+  charts.dur.update('none');
+
+  const entryMap = aggrByField(sessions, 'entrypoint');
+  _setPolar(charts.entrypoint, Object.keys(entryMap), Object.values(entryMap), PALETTE);
+
+  const permMap = aggrByField(sessions, 'permission_mode');
+  _setPolar(charts.perm, Object.keys(permMap), Object.values(permMap), PALETTE.slice(3));
+
+  const stopMap = aggrByField(sessions, 'stop_reason');
+  _setPolar(charts.stopreason, Object.keys(stopMap), Object.values(stopMap), ['#34d399','#ff5c73','#e3b341','#a78bfa']);
+
+  const catMap2 = aggrByCategory(sessions);
+  const catI2   = I18N[lang].categories;
+  _setPolar(charts.category, Object.keys(catMap2).map(k=>catI2[k]||k), Object.values(catMap2), Object.keys(catMap2).map(k=>CAT_COLORS[k]||'#888'));
+
+  const toolsTop10 = aggrTools(sessions);
+  _setBar(charts.tools, toolsTop10.map(e=>e[0]), toolsTop10.map(e=>e[1]), null);
+
+  const catProj = aggrCatByProject(sessions);
+  const catI_up = I18N[lang].categories;
+  charts.catproj.data.labels = catProj.projects;
+  charts.catproj.data.datasets = catProj.datasets.map(ds=>({...ds,label:catI_up[ds.label]||ds.label}));
+  charts.catproj.update('none');
+}
+
+function updateChartLabels(sessions) {
+  const i  = I18N[lang];
+  const ds = charts.time.data.datasets;
+  ds[0].label = i.ds_input;
+  ds[1].label = i.ds_output;
+  ds[2].label = i.ds_cache_read;
+  ds[3].label = i.ds_cache_create;
+  ds[4].label = i.ds_cost;
+  charts.time.options.scales.y.title.text  = i.axis_tokens;
+  charts.time.options.scales.y2.title.text = i.axis_usd;
+  const {dates, map} = aggrByDate(sessions);
+  charts.time.options.plugins.tooltip.callbacks.afterBody =
+    ctx => ctx[0] ? [i.tooltip_sessions+(map[ctx[0].label]?.sessions??'')] : [];
+  charts.time.update();
+  const catI_lb  = I18N[lang].categories;
+  const catOrder = ['coding','exploration','automation','research','conversation','mixed'];
+  charts.catproj.data.datasets.forEach((ds,idx) => { ds.label = catI_lb[catOrder[idx]] || catOrder[idx]; });
+  charts.catproj.update('none');
+  const catMap_lb = aggrByCategory(sessions);
+  _setPolar(charts.category, Object.keys(catMap_lb).map(k=>catI_lb[k]||k), Object.values(catMap_lb), Object.keys(catMap_lb).map(k=>CAT_COLORS[k]||'#888'));
+  const catI3   = I18N[lang].categories;
+  const catMap3 = aggrByCategory(sessions);
+  _setBar(charts.category,
+    Object.keys(catMap3).map(k => catI3[k] || k),
+    Object.values(catMap3),
+    Object.keys(catMap3).map(k => CAT_COLORS[k] || '#888'));
+}
+
+// ── Tables ────────────────────────────────────────────────────────────────────
+const tblData = {};
+const sortSt  = {};
+let showAllSessions = false;
+
+function relativeTime(isoStr) {
+  const mins = Math.floor((Date.now() - new Date(isoStr).getTime()) / 60000);
+  if (mins < 2)  return lang === 'es' ? 'ahora'        : 'just now';
+  if (mins < 60) return lang === 'es' ? `hace ${mins}m` : `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return lang === 'es' ? `hace ${hrs}h`  : `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return lang === 'es' ? `hace ${days}d` : `${days}d ago`;
+  return lang === 'es' ? `hace ${Math.floor(days/30)}mo` : `${Math.floor(days/30)}mo ago`;
+}
+
+function renderTblBody(id, rows) {
+  const tbody = document.getElementById(id + '-body');
+  tbody.replaceChildren();
+  if (!rows.length) {
+    const tr = tbody.insertRow();
+    const td = tr.insertCell();
+    td.colSpan = 10;
+    td.className = 'empty-row';
+    td.textContent = I18N[lang].no_data;
+    return;
+  }
+  const modelCol = id === 'tSessions' ? 3 : 0;
+  for (const row of rows) {
+    const tr = tbody.insertRow();
+    for (let ci = 0; ci < row.length; ci++) {
+      const td = tr.insertCell();
+      if (ci === modelCol && row[ci] in MODEL_COLORS) {
+        const span = document.createElement('span');
+        span.className = 'model-tag ' + row[ci];
+        span.textContent = row[ci];
+        td.appendChild(span);
+      } else {
+        td.textContent = row[ci];
+      }
+    }
+  }
+}
+
+function sortTbl(id, col) {
+  if (!sortSt[id]) sortSt[id] = {col:-1,asc:true};
+  const st = sortSt[id];
+  st.asc = st.col === col ? !st.asc : true;
+  st.col = col;
+  const rows = [...tblData[id]].sort((a,b) => {
+    const av = String(a[col]), bv = String(b[col]);
+    const an = parseFloat(av.replace(/[^0-9.-]/g,'')), bn = parseFloat(bv.replace(/[^0-9.-]/g,''));
+    const cmp = (!isNaN(an) && !isNaN(bn)) ? an-bn : av.localeCompare(bv);
+    return st.asc ? cmp : -cmp;
+  });
+  tblData[id] = rows;
+  if (id === 'tSessions') { renderSessionsBody(); }
+  else if (id === 'tProj')   { renderProjBody(); }
+  else if (id === 'tSkills') { renderSkillsBody(); }
+  else { renderTblBody(id, rows); }
+  document.querySelectorAll('#'+id+' th').forEach((th,ci) => {
+    th.classList.remove('sort-asc','sort-desc');
+    if (ci===col) th.classList.add(st.asc?'sort-asc':'sort-desc');
+  });
+}
+
+function updateModelTable(sessions) {
+  const aggr = aggrByModel(sessions);
+  const rows = Object.entries(aggr)
+    .sort((a,b) => b[1].cost - a[1].cost)
+    .map(([model,d]) => [
+      model,
+      d.sessions,
+      (d.input/1000).toFixed(0),
+      (d.output/1000).toFixed(0),
+      (d.cache_read/1000).toFixed(0),
+      (d.cache_create/1000).toFixed(0),
+      '$'+d.cost.toFixed(2),
+    ]);
+  tblData['tModel'] = rows;
+  renderTblBody('tModel', rows);
+}
+
+function updateSessionsTable(sessions) {
+  const sorted = [...sessions].sort((a,b) => b.datetime.localeCompare(a.datetime));
+  showAllSessions = false;
+  tblData['tSessions'] = sorted.map(s => [
+    relativeTime(s.datetime),
+    s.project,
+    s.duration_min.toFixed(0)+' min',
+    s.primary_model,
+    (s.total_tokens/1000).toFixed(0)+'k',
+    '$'+s.estimated_cost.toFixed(4),
+    s.stop_reason || '—',
+  ]);
+  renderSessionsBody();
+}
+
+function renderSessionsBody() {
+  const all  = tblData['tSessions'] || [];
+  const rows = showAllSessions ? all : all.slice(0, 20);
+  renderTblBody('tSessions', rows);
+
+  const wrap = document.getElementById('sessions-table-wrap');
+  wrap.style.maxHeight = (showAllSessions && all.length > 20) ? '440px' : '';
+  wrap.style.overflowY = (showAllSessions && all.length > 20) ? 'auto'  : '';
+
+  const i     = I18N[lang];
+  const label = document.getElementById('sessions-count-label');
+  label.textContent = (!showAllSessions && all.length > 20)
+    ? i.showing_n_of.replace('%n%', 20).replace('%total%', all.length)
+    : i.n_sessions.replace('%n%', all.length);
+
+  const btn = document.getElementById('btn-show-all');
+  if (all.length <= 20) { btn.style.display = 'none'; return; }
+  btn.style.display = '';
+  btn.textContent = showAllSessions
+    ? i.show_less
+    : i.show_all.replace('%n%', all.length);
+}
+
+function toggleAllSessions() {
+  showAllSessions = !showAllSessions;
+  renderSessionsBody();
+}
+
+// ── Tips — compute + render ───────────────────────────────────────────────────
+function median(arr) {
+  if (!arr.length) return 0;
+  const s = [...arr].sort((a,b) => a-b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2;
+}
+
+function computeTips(sessions) {
+  if (!sessions.length) return [];
+  const tips             = [];
+  const totalCost        = sessions.reduce((a,s) => a + s.estimated_cost, 0);
+  const totalCacheRead   = sessions.reduce((a,s) => a + s.cache_read, 0);
+  const totalCacheCreate = sessions.reduce((a,s) => a + s.cache_create, 0);
+  const totalInput       = sessions.reduce((a,s) => a + s.input_tokens, 0);
+  const totalOutput      = sessions.reduce((a,s) => a + s.output_tokens, 0);
+
+  // 1. Cache hit rate
+  const cacheable = totalInput + totalCacheRead + totalCacheCreate;
+  const cacheRate = cacheable > 0 ? totalCacheRead / cacheable : 0;
+  const cachePct  = Math.round(cacheRate * 100);
+  if (cacheRate < 0.15) {
+    tips.push({ level:'warn',
+      title_es:'Baja tasa de cache',
+      body_es:`Solo el ${cachePct}% de los tokens de entrada viene de cache. Sesiones mas largas y reusar contexto entre mensajes mejora esto.`,
+      title_en:'Low cache hit rate',
+      body_en:`Only ${cachePct}% of input tokens come from cache. Longer sessions and reusing context between messages improves this.`,
+    });
+  } else if (cacheRate >= 0.40) {
+    tips.push({ level:'ok',
+      title_es:'Buena tasa de cache',
+      body_es:`${cachePct}% de tokens viene de cache -- buen uso del contexto de sesion.`,
+      title_en:'Good cache hit rate',
+      body_en:`${cachePct}% of tokens come from cache — good use of session context.`,
+    });
+  }
+
+  // 2. Opus proportion
+  const opusSess    = sessions.filter(s => s.primary_model==='opus' || s.primary_model==='mixed');
+  const opusPct     = Math.round(opusSess.length / sessions.length * 100);
+  const opusCost    = opusSess.reduce((a,s) => a + s.estimated_cost, 0);
+  const opusCostPct = Math.round(totalCost > 0 ? opusCost / totalCost * 100 : 0);
+  if (opusPct > 35) {
+    tips.push({ level:'warn',
+      title_es:'Alto uso de Opus',
+      body_es:`${opusPct}% de sesiones usan Opus (${opusCostPct}% del costo). Opus es ideal para planning y debugging complejo -- revisa si todas las sesiones lo justifican.`,
+      title_en:'High Opus usage',
+      body_en:`${opusPct}% of sessions use Opus (${opusCostPct}% of cost). Opus is ideal for planning and complex debugging — review whether all sessions justify it.`,
+    });
+  }
+
+  // 3. Short sessions
+  const short    = sessions.filter(s => s.duration_min < 3);
+  const shortPct = Math.round(short.length / sessions.length * 100);
+  if (shortPct > 30) {
+    tips.push({ level:'info',
+      title_es:'Muchas sesiones muy cortas',
+      body_es:`${shortPct}% de sesiones duran menos de 3 min. Cada sesion paga el costo de contexto inicial -- considera consolidar tareas cortas.`,
+      title_en:'Many very short sessions',
+      body_en:`${shortPct}% of sessions last under 3 min. Each session pays the initial context cost — consider consolidating short tasks.`,
+    });
+  }
+
+  // 4. Long sessions
+  const longSess = sessions.filter(s => s.duration_min > 120);
+  if (longSess.length >= 3) {
+    const avgCost = longSess.reduce((a,s) => a + s.estimated_cost, 0) / longSess.length;
+    tips.push({ level:'info',
+      title_es:'Sesiones muy largas',
+      body_es:`${longSess.length} sesiones superan 2 h (costo promedio $${avgCost.toFixed(2)}). Claude pierde efectividad en contextos muy largos -- considera /compact o dividir en sesiones.`,
+      title_en:'Very long sessions',
+      body_en:`${longSess.length} sessions exceed 2 h (avg cost $${avgCost.toFixed(2)}). Claude loses effectiveness in very long contexts — consider /compact or splitting into sessions.`,
+    });
+  }
+
+  // 5. Project cost concentration
+  const byProjCost = {};
+  for (const s of sessions) { byProjCost[s.project] = (byProjCost[s.project]||0) + s.estimated_cost; }
+  const projEntries = Object.entries(byProjCost);
+  if (projEntries.length > 2) {
+    const [topProj, topCost] = projEntries.sort((a,b) => b[1]-a[1])[0];
+    const topPct = Math.round(totalCost > 0 ? topCost / totalCost * 100 : 0);
+    if (topPct > 60) {
+      tips.push({ level:'info',
+        title_es:'Costo concentrado en un proyecto',
+        body_es:`'${topProj}' representa el ${topPct}% del costo total ($${topCost.toFixed(2)}). Puede ser intencional, pero vale revisarlo si el proyecto ya esta estable.`,
+        title_en:'Cost concentrated in one project',
+        body_en:`'${topProj}' accounts for ${topPct}% of total cost ($${topCost.toFixed(2)}). May be intentional, but worth reviewing if the project is already stable.`,
+      });
+    }
+  }
+
+  // 6. High output:input ratio
+  if (totalInput > 0) {
+    const ratio = totalOutput / totalInput;
+    if (ratio > 0.8) {
+      tips.push({ level:'info',
+        title_es:'Relacion output/input alta',
+        body_es:`Output es el ${Math.round(ratio*100)}% del input. El output es 5-25x mas caro que el input -- prompts mas precisos reducen los tokens generados.`,
+        title_en:'High output/input ratio',
+        body_en:`Output is ${Math.round(ratio*100)}% of input. Output costs 5-25x more than input — more precise prompts reduce generated tokens.`,
+      });
+    }
+  }
+
+  // 7. Median session duration
+  const med = median(sessions.map(s => s.duration_min));
+  if (med >= 20) {
+    tips.push({ level:'ok',
+      title_es:'Sesiones de buena duracion',
+      body_es:`Duracion mediana de ${Math.round(med)} min -- sesiones bien aprovechadas.`,
+      title_en:'Good session duration',
+      body_en:`Median duration of ${Math.round(med)} min — sessions are well-utilized.`,
+    });
+  }
+
+  // 8. max_tokens rate
+  const maxTokPct = sessions.filter(s => s.stop_reason==='max_tokens').length / sessions.length;
+  if (maxTokPct > 0.05) {
+    tips.push({ level:'warn',
+      title_es:'Sesiones que alcanzan el limite de contexto',
+      body_es:`${Math.round(maxTokPct*100)}% de sesiones alcanzan el limite de tokens. Usa /compact antes de que el contexto se llene o divide en sesiones mas cortas.`,
+      title_en:'Sessions hitting context limit',
+      body_en:`${Math.round(maxTokPct*100)}% of sessions hit the token limit. Use /compact before context fills up or split into shorter sessions.`,
+    });
+  }
+
+  return tips;
+}
+
+function buildClaudePrompt(sessions, tips, l) {
+  if (!sessions.length) return '';
+  const sorted = [...sessions].sort((a,b) => a.datetime.localeCompare(b.datetime));
+  const totalTokens      = sessions.reduce((a,s) => a + s.total_tokens, 0);
+  const totalCost        = sessions.reduce((a,s) => a + s.estimated_cost, 0);
+  const totalInput       = sessions.reduce((a,s) => a + s.input_tokens, 0);
+  const totalOutput      = sessions.reduce((a,s) => a + s.output_tokens, 0);
+  const totalCacheRead   = sessions.reduce((a,s) => a + s.cache_read, 0);
+  const totalCacheCreate = sessions.reduce((a,s) => a + s.cache_create, 0);
+  const medDur           = median(sessions.map(s => s.duration_min));
+  const cacheable        = totalInput + totalCacheRead + totalCacheCreate;
+  const cacheRate        = cacheable > 0 ? totalCacheRead / cacheable : 0;
+
+  const byProj = {};
+  for (const s of sessions) {
+    if (!byProj[s.project]) byProj[s.project] = {tokens:0,cost:0,sessions:0};
+    byProj[s.project].tokens   += s.total_tokens;
+    byProj[s.project].cost     += s.estimated_cost;
+    byProj[s.project].sessions += 1;
+  }
+  const top5 = Object.entries(byProj).sort((a,b) => b[1].cost-a[1].cost).slice(0,5);
+
+  const modelCount = {};
+  for (const s of sessions) { modelCount[s.primary_model] = (modelCount[s.primary_model]||0)+1; }
+
+  const sw         = l === 'en' ? 'sessions' : 'sesiones';
+  const tipLines   = tips.map(t=>`- [${t.level.toUpperCase()}] ${t['title_'+l]}: ${t['body_'+l]}`).join('\n');
+  const projLines  = top5.map(([n,d])=>`  - ${n}: ${d.sessions} ${sw}, ${d.tokens.toLocaleString()} tokens, $${d.cost.toFixed(2)}`).join('\n');
+  const modelLines = Object.entries(modelCount).sort().map(([m,c])=>`  - ${m}: ${c} ${sw}`).join('\n');
+
+  const firstDate = sorted[0].date;
+  const lastDate  = sorted[sorted.length-1].date;
+
+  if (l === 'en') return `Here are my Claude Code usage metrics. Analyze them and give me concrete recommendations to improve my workflow, reduce costs, and improve session quality.
+
+## General summary
+- Period: ${firstDate} -> ${lastDate}
+- Total sessions: ${sessions.length}
+- Active projects: ${Object.keys(byProj).length}
+- Total tokens: ${totalTokens.toLocaleString()} (input: ${totalInput.toLocaleString()}, output: ${totalOutput.toLocaleString()})
+- Estimated cost: $${totalCost.toFixed(2)} USD
+- Median session duration: ${Math.round(medDur)} min
+- Cache rate: ${Math.round(cacheRate*100)}% (read: ${totalCacheRead.toLocaleString()}, create: ${totalCacheCreate.toLocaleString()})
+
+## Distribution by project (top 5)
+${projLines}
+
+## Distribution by model
+${modelLines}
+
+## Automatically detected tips
+${tipLines || '  (none)'}
+
+## Questions I'd like to answer
+1. What patterns suggest inefficient usage?
+2. How could I improve the cache rate?
+3. Does the Sonnet/Opus balance make sense for the type of work I do?
+4. What should I change in my longer sessions?
+5. Are there any warning signs I'm not capturing with the automatic rules?`.trim();
+
+  return `Aqui estan mis metricas de uso de Claude Code. Analizalas y dame recomendaciones concretas para mejorar mi flujo de trabajo, reducir costos y mejorar la calidad de mis sesiones.
+
+## Resumen general
+- Periodo: ${firstDate} -> ${lastDate}
+- Sesiones totales: ${sessions.length}
+- Proyectos activos: ${Object.keys(byProj).length}
+- Tokens totales: ${totalTokens.toLocaleString()} (input: ${totalInput.toLocaleString()}, output: ${totalOutput.toLocaleString()})
+- Costo estimado: $${totalCost.toFixed(2)} USD
+- Duracion mediana de sesion: ${Math.round(medDur)} min
+- Tasa de cache: ${Math.round(cacheRate*100)}% (read: ${totalCacheRead.toLocaleString()}, create: ${totalCacheCreate.toLocaleString()})
+
+## Distribucion por proyecto (top 5)
+${projLines}
+
+## Distribucion por modelo
+${modelLines}
+
+## Tips automaticos detectados
+${tipLines || '  (ninguno)'}
+
+## Preguntas que me gustaria responder
+1. Que patrones ves que sugieran uso ineficiente?
+2. Como podria mejorar la tasa de cache?
+3. El balance Sonnet/Opus tiene sentido para el tipo de trabajo que hago?
+4. Que deberia cambiar en mis sesiones mas largas?
+5. Hay alguna senal de alerta que no este captando con las reglas automaticas?`.trim();
+}
+
+function renderTips(sessions, tips) {
+  const container = document.getElementById('tips-container');
+  container.replaceChildren();
+  const resolved = tips ?? computeTips(sessions);
+  if (!resolved.length) {
+    const p = document.createElement('p');
+    p.style.cssText = 'font-size:.75rem;color:var(--muted)';
+    p.textContent = I18N[lang].no_tips;
+    container.appendChild(p);
+    return;
+  }
+  for (const t of resolved) {
+    const wrap  = document.createElement('div');
+    wrap.className = 'tip ' + t.level;
+    const icon  = document.createElement('div');
+    icon.className   = 'tip-icon';
+    icon.textContent = t.level === 'warn' ? '▲' : t.level === 'ok' ? '●' : '◆';
+    const body  = document.createElement('div');
+    const title = document.createElement('div');
+    title.className   = 'tip-title';
+    title.textContent = t['title_' + lang];
+    const desc  = document.createElement('div');
+    desc.className   = 'tip-body';
+    desc.textContent = t['body_' + lang];
+    body.appendChild(title);
+    body.appendChild(desc);
+    wrap.appendChild(icon);
+    wrap.appendChild(body);
+    container.appendChild(wrap);
+  }
+}
+
+// ── Heatmap ───────────────────────────────────────────────────────────────────
+function buildHeatmapGrid(sessions) {
+  const grid = Array.from({length:7}, () => new Array(24).fill(0));
+  for (const s of sessions) {
+    const d    = new Date(s.datetime);
+    const dow  = (d.getDay() + 6) % 7; // 0=Mon..6=Sun
+    const hour = d.getHours();
+    grid[dow][hour]++;
+  }
+  return grid;
+}
+
+function renderHeatmap(sessions) {
+  const container = document.getElementById('heatmap-container');
+  container.replaceChildren();
+  const i    = I18N[lang];
+  const grid = buildHeatmapGrid(sessions);
+  const max  = Math.max(1, ...grid.flat());
+  const isDark = theme === 'dark';
+  const rgb  = isDark ? '79,158,255' : '21,101,192';
+  const alphas = [.07, .22, .44, .66, .88];
+
+  function cellColor(count) {
+    if (count === 0) return `rgba(${rgb},.05)`;
+    return `rgba(${rgb},${alphas[Math.min(4, Math.ceil(count / max * 4))]})`;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'heatmap-wrap';
+  const g = document.createElement('div');
+  g.className = 'heatmap-grid';
+
+  // Hour label row
+  const corner = document.createElement('div');
+  corner.className = 'hm-label';
+  g.appendChild(corner);
+  for (let h = 0; h < 24; h++) {
+    const lbl = document.createElement('div');
+    lbl.className = 'hm-label hm-hour';
+    lbl.textContent = h;
+    g.appendChild(lbl);
+  }
+
+  // Day rows
+  for (let d = 0; d < 7; d++) {
+    const dayLbl = document.createElement('div');
+    dayLbl.className = 'hm-label hm-day';
+    dayLbl.textContent = i.days[d];
+    g.appendChild(dayLbl);
+    for (let h = 0; h < 24; h++) {
+      const cell = document.createElement('div');
+      cell.className = 'hm-cell';
+      cell.style.background = cellColor(grid[d][h]);
+      cell.title = `${i.days[d]} ${String(h).padStart(2,'0')}:00 — ${grid[d][h]}`;
+      g.appendChild(cell);
+    }
+  }
+
+  wrap.appendChild(g);
+  container.appendChild(wrap);
+}
+
+// ── Skills & Agents ───────────────────────────────────────────────────────────
+function aggrSkills(sessions) {
+  const map = {};
+  for (const s of sessions) {
+    for (const [tool, count] of Object.entries(s.tools || {})) {
+      if (!tool.startsWith('skill/') && !tool.startsWith('agent/')) continue;
+      const key = tool + '\0' + (s.project || 'unknown');
+      if (!map[key]) map[key] = { calls: 0, sids: new Set(), lastUsed: 0 };
+      map[key].calls += count;
+      map[key].sids.add(s.session_id);
+      const ts = new Date(s.datetime).getTime();
+      if (ts > map[key].lastUsed) map[key].lastUsed = ts;
+    }
+  }
+  return Object.entries(map)
+    .map(([k, v]) => {
+      const [name, proj] = k.split('\0');
+      return [name, proj, v.calls, v.sids.size, v.lastUsed];
+    })
+    .sort((a, b) => b[2] - a[2]);
+}
+
+function renderSkillsBody() {
+  const i     = I18N[lang];
+  const tbody = document.getElementById('tSkills-body');
+  const rows  = tblData['tSkills'] || [];
+  tbody.replaceChildren();
+  if (!rows.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 5; td.className = 'empty-row'; td.textContent = i.no_skills;
+    tr.appendChild(td); tbody.appendChild(tr);
+    return;
+  }
+  for (const [name, proj, calls, uniq, lastUsed] of rows) {
+    const tr = document.createElement('tr');
+    [name, proj, String(calls), String(uniq), relativeTime(lastUsed)].forEach(text => {
+      const td = document.createElement('td'); td.textContent = text; tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+}
+
+function updateSkillsTable(sessions) {
+  tblData['tSkills'] = aggrSkills(sessions);
+  renderSkillsBody();
+}
+
+// ── Cost by project ───────────────────────────────────────────────────────────
+function aggrByProject(sessions) {
+  const map = {};
+  for (const s of sessions) {
+    const proj = s.project || 'unknown';
+    if (!map[proj]) map[proj] = { sessions: 0, tokens: 0, cost: 0, models: {} };
+    map[proj].sessions++;
+    map[proj].tokens += s.total_tokens || 0;
+    map[proj].cost   += s.estimated_cost || 0;
+    const m = s.primary_model || 'unknown';
+    map[proj].models[m] = (map[proj].models[m] || 0) + 1;
+  }
+  const totalCost = Object.values(map).reduce((a, v) => a + v.cost, 0);
+  return Object.entries(map)
+    .map(([proj, v]) => {
+      const topModel = Object.entries(v.models).sort((a, b) => b[1] - a[1])[0]?.[0] || 'unknown';
+      const pct = totalCost > 0 ? (v.cost / totalCost * 100) : 0;
+      return [proj, v.sessions, v.tokens, v.cost, pct, topModel];
+    })
+    .sort((a, b) => b[3] - a[3]);
+}
+
+function renderProjBody() {
+  const tbody = document.getElementById('tProj-body');
+  tbody.replaceChildren();
+  for (const [proj, sess, tokens, cost, pct, model] of (tblData['tProj'] || [])) {
+    const tr = document.createElement('tr');
+    const tier = model === 'mixed' ? 'mixed' : model.includes('opus') ? 'opus' : model.includes('haiku') ? 'haiku' : 'sonnet';
+    const cells = [proj, String(sess), (tokens/1000).toFixed(0)+'k', '$'+cost.toFixed(2), pct.toFixed(1)+'%'];
+    cells.forEach(text => { const td = document.createElement('td'); td.textContent = text; tr.appendChild(td); });
+    const tdModel = document.createElement('td');
+    const tag = document.createElement('span');
+    tag.className = 'model-tag ' + tier;
+    tag.textContent = model;
+    tdModel.appendChild(tag);
+    tr.appendChild(tdModel);
+    tbody.appendChild(tr);
+  }
+}
+
+function updateProjectTable(sessions) {
+  tblData['tProj'] = aggrByProject(sessions);
+  renderProjBody();
+}
+
+// ── Apply filters ─────────────────────────────────────────────────────────────
+function applyFilters() {
+  const f    = filterSessions();
+  const tips = computeTips(f);
+  updateKPIs(f);
+  updateCharts(f);
+  updateProjectTable(f);
+  updateModelTable(f);
+  updateSessionsTable(f);
+  updateSkillsTable(f);
+  renderHeatmap(f);
+  renderTips(f, tips);
+  updateDateRangeLabel(f);
+  _refreshPromptPreview(f, tips);
+}
+
+// ── Date range label ─────────────────────────────────────────────────────────
+function updateDateRangeLabel(sessions) {
+  const el = document.getElementById('date-range-label');
+  if (!sessions.length) { el.textContent = ''; return; }
+  const dates = sessions.map(s => s.date).sort();
+  el.textContent = dates[0] === dates[dates.length-1]
+    ? dates[0]
+    : `${dates[0]} → ${dates[dates.length-1]}`;
+}
+
+// ── Prompt preview ────────────────────────────────────────────────────────────
+let showPromptPreview = false;
+
+function togglePromptPreview() {
+  showPromptPreview = !showPromptPreview;
+  const el  = document.getElementById('prompt-preview');
+  const btn = document.getElementById('btn-preview');
+  const i   = I18N[lang];
+  el.style.display = showPromptPreview ? '' : 'none';
+  btn.textContent  = showPromptPreview ? i.btn_preview_hide : i.btn_preview;
+  if (showPromptPreview) _refreshPromptPreview();
+}
+
+function _refreshPromptPreview(f, tips) {
+  if (!showPromptPreview) return;
+  const sessions = f    ?? filterSessions();
+  const t        = tips ?? computeTips(sessions);
+  document.getElementById('prompt-preview-text').textContent = buildClaudePrompt(sessions, t, lang);
+}
+
+// ── Claude prompt copy ────────────────────────────────────────────────────────
+function copyClaudePrompt() {
+  const btn   = document.getElementById('btn-copy');
+  const i     = I18N[lang];
+  const reset = () => { btn.textContent = i.btn_copy; btn.classList.remove('copied'); };
+  const done  = () => { btn.textContent = i.btn_copied; btn.classList.add('copied'); setTimeout(reset, 2500); };
+  const f    = filterSessions();
+  const text = buildClaudePrompt(f, computeTips(f), lang);
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else { fallback(); }
+  function fallback() {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); done(); } catch(_) {}
+    document.body.removeChild(ta);
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.documentElement.setAttribute('data-theme', theme);
+document.documentElement.lang = lang;
+Chart.defaults.color       = theme === 'dark' ? '#7fa9d4' : '#5b7fa6';
+Chart.defaults.borderColor = theme === 'dark' ? 'rgba(79,158,255,.15)' : 'rgba(21,101,192,.15)';
+if (theme === 'light') document.getElementById('btn-theme').textContent = '☾';
+if (lang  !== 'es')   document.getElementById('btn-lang').textContent  = 'ES';
+
+const initial = filterSessions();
+initCharts(initial);
+updateKPIs(initial);
+updateProjectTable(initial);
+updateModelTable(initial);
+updateSessionsTable(initial);
+updateSkillsTable(initial);
+renderTips(initial);
+renderHeatmap(initial);
+updateDateRangeLabel(initial);
+applyLang();
+initInfoPanels();
+</script>
+</body>
+</html>
